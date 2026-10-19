@@ -32,11 +32,16 @@ P net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper
 P net.minecraft.client.gui.components.ImageButton 'public'
 P net.minecraft.client.gui.components.SpriteIconButton 'public'
 P net.minecraft.client.gui.screens.Screen 'mouse|Mouse|key'
-echo "== who calls Screenshot.grab / takeScreenshot"
-for c in $(unzip -l "$MC" | grep -oE 'net/minecraft/client/[A-Za-z/$]*\.class' | sed 's/.class$//;s#/#.#g'); do
-  out=$(javap -p -c -cp "$CP" "$c" 2>/dev/null | grep -E '^  [a-z].*\(|Screenshot\.(grab|takeScreenshot)|ClickEvent\$OpenFile|hideGui|OpenFile\.|openFile|openPath|openUri|SDL_OpenURL|showItemInFolder|ShellExecute' | grep -B1 -E 'Screenshot\.|OpenFile|hideGui|openFile|openPath|openUri|SDL_OpenURL')
-  if [ -n "$out" ]; then echo "--- $c"; echo "$out"; fi
+for c in net.minecraft.client.Minecraft net.minecraft.client.gui.Gui net.minecraft.client.KeyboardHandler net.minecraft.client.gui.Hud net.minecraft.client.renderer.GameRenderer net.minecraft.client.gui.screens.Screen net.minecraft.client.gui.screens.ChatScreen net.minecraft.client.gui.components.ChatComponent; do
+  echo "--- $c"; javap -p -c -cp "$CP" "$c" 2>/dev/null | grep -E '^  [a-z].*\(|Screenshot\.(grab|takeScreenshot)|OpenFile|hideGui|openFile|openPath|openUri|SDL_OpenURL|Hidden|hidden' | grep -B1 -E 'Screenshot\.|OpenFile|hideGui|openFile|openPath|openUri|SDL_OpenURL|Hidden|hidden' | head -40
 done
+P 'net.minecraft.client.gui.components.CycleButton$Builder'
+P 'net.minecraft.client.gui.components.CycleButton$OnValueChange'
+P 'net.minecraft.client.gui.components.toasts.SystemToast$SystemToastId' 'static'
+P net.minecraft.network.chat.contents.TranslatableContents 'public'
+P net.minecraft.network.chat.Style 'getClickEvent'
+P net.minecraft.client.renderer.texture.TextureManager 'release|register'
+P com.mojang.blaze3d.platform.InputConstants 'KEY_F[0-9]+|KEY_DELETE|KEY_F;|MOUSE_BUTTON_LEFT'
 echo "== classes with open in name"
 unzip -l "$MC" | grep -oE '[A-Za-z/]*(Open|Opener|Browser|Desktop|FileUtil|Platform)[A-Za-z]*\.class' | sort -u
 echo "== CODE Screen.defaultHandleClickEvent"
