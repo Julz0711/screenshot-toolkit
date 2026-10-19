@@ -12,11 +12,13 @@ import com.julz.screenshottoolkit.core.Shot;
 import com.julz.screenshottoolkit.core.ShotMetadata;
 import com.mojang.blaze3d.platform.NativeImage;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
+import net.fabricmc.fabric.api.client.gametest.v1.TestInput;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Options;
+import net.minecraft.client.gui.components.Button;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -24,6 +26,7 @@ import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public class ScreenshotToolkitClientGameTest implements FabricClientGameTest {
@@ -90,6 +93,7 @@ public class ScreenshotToolkitClientGameTest implements FabricClientGameTest {
         context.waitForScreen(ShotScreen.class);
         context.waitTicks(10);
         context.takeScreenshot("screenshot-toolkit-viewer");
+        testCropWithMouse(context, library, red);
         context.setScreen(() -> null);
 
         // Delete goes to the trash, with the sidecar
@@ -101,6 +105,58 @@ public class ScreenshotToolkitClientGameTest implements FabricClientGameTest {
         } catch (IOException e) {
             throw new AssertionError(e);
         }
+    }
+
+    /** Crops the open screenshot the way a player does: Crop, drag over the image, Save Crop. */
+    private void testCropWithMouse(ClientGameTestContext context, ScreenshotLibrary library, Path source) {
+        context.waitFor(client -> ((ShotScreen) client.gui.screen()).imageBounds() != null);
+        clickButton(context, screen -> screen.cropButton());
+        int[] area = context.computeOnClient(client -> ((ShotScreen) client.gui.screen()).imageBounds());
+        int scale = context.computeOnClient(client -> client.getWindow().getGuiScale());
+        TestInput input = context.getInput();
+        input.setCursorPos((area[0] + area[2] * 0.25) * scale, (area[1] + area[3] * 0.25) * scale);
+        context.waitTick();
+        input.holdMouse(0);
+        context.waitTick();
+        for (int step = 1; step <= 5; step++) {
+            input.moveCursor(area[2] * 0.1 * scale, area[3] * 0.1 * scale);
+            context.waitTick();
+        }
+        input.releaseMouse(0);
+        context.waitTick();
+        context.takeScreenshot("screenshot-toolkit-crop-selection");
+        boolean selected = context.computeOnClient(client -> ((ShotScreen) client.gui.screen()).cropButton().active);
+        assertTrue(selected, "dragging over the image selects an area");
+
+        clickButton(context, screen -> screen.cropButton());
+        Path cropped = library.directory().resolve("2026-01-01_10.00.00_crop.png");
+        context.waitFor(client -> Files.exists(cropped));
+        try (NativeImage image = Thumbnails.read(cropped)) {
+            // Half of 320x180, give or take the rounding of screen pixels to image pixels
+            assertTrue(Math.abs(image.getWidth() - 160) <= 8, "cropped width " + image.getWidth());
+            assertTrue(Math.abs(image.getHeight() - 90) <= 8, "cropped height " + image.getHeight());
+        } catch (IOException e) {
+            throw new AssertionError(e);
+        }
+        Path shown = context.computeOnClient(client -> ((ShotScreen) client.gui.screen()).currentFile());
+        assertEquals(cropped, shown, "viewer shows the cropped copy");
+        try {
+            library.moveToTrash(cropped);
+        } catch (IOException e) {
+            throw new AssertionError(e);
+        }
+    }
+
+    private static void clickButton(ClientGameTestContext context, Function<ShotScreen, Button> button) {
+        int[] center = context.computeOnClient(client -> {
+            Button b = button.apply((ShotScreen) client.gui.screen());
+            int scale = client.getWindow().getGuiScale();
+            return new int[]{(b.getX() + b.getWidth() / 2) * scale, (b.getY() + b.getHeight() / 2) * scale};
+        });
+        context.getInput().setCursorPos(center[0], center[1]);
+        context.waitTick();
+        context.getInput().pressMouse(0);
+        context.waitTick();
     }
 
     private void testCrop(ScreenshotLibrary library) {

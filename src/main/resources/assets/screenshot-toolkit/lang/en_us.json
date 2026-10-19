@@ -38,7 +38,7 @@
 	"screenshot-toolkit.viewer.crop": "Crop",
 	"screenshot-toolkit.viewer.cancelCrop": "Cancel Crop",
 	"screenshot-toolkit.viewer.saveCrop": "Save Crop",
-	"screenshot-toolkit.viewer.cropHint": "Drag over the image to choose the area to keep",
+	"screenshot-toolkit.viewer.cropHint": "Drag over the image to choose the area to keep, then press Save Crop",
 	"screenshot-toolkit.viewer.cropSaved": "Cropped copy saved",
 	"screenshot-toolkit.viewer.open": "Open",
 	"screenshot-toolkit.viewer.delete": "Delete",

@@ -42,13 +42,14 @@ public class ShotScreen extends Screen {
 
     // Crop selection in image pixels; null when not cropping
     private boolean cropping;
+    private boolean selecting;
     private int[] cropStart;
     private int[] cropEnd;
 
     private Button favoriteButton;
     private Button teleportButton;
     private Button cropButton;
-    private Button saveCropButton;
+    private Button backButton;
 
     public ShotScreen(GalleryScreen gallery, List<Shot> shots, int index) {
         super(Component.translatable(PREFIX + "title"));
@@ -77,7 +78,7 @@ public class ShotScreen extends Screen {
                 .bounds(left + (button + gap), row1, button, 20).build());
         teleportButton = addRenderableWidget(Button.builder(Component.translatable(PREFIX + "teleport"), b -> copyTeleport())
                 .bounds(left + 2 * (button + gap), row1, button, 20).build());
-        cropButton = addRenderableWidget(Button.builder(Component.translatable(PREFIX + "crop"), b -> toggleCrop())
+        cropButton = addRenderableWidget(Button.builder(Component.translatable(PREFIX + "crop"), b -> cropPressed())
                 .bounds(left + 3 * (button + gap), row1, button, 20).build());
 
         addRenderableWidget(Button.builder(Component.literal("<"), b -> move(-1))
@@ -90,13 +91,11 @@ public class ShotScreen extends Screen {
         addRenderableWidget(Button.builder(Component.translatable(PREFIX + "delete"), b -> confirmDelete())
                 .bounds(x, row2, middle, 20).build());
         x += middle + gap;
-        addRenderableWidget(Button.builder(Component.translatable(PREFIX + "back"), b -> onClose())
+        backButton = addRenderableWidget(Button.builder(Component.translatable(PREFIX + "back"), b -> onClose())
                 .bounds(x, row2, middle, 20).build());
         addRenderableWidget(Button.builder(Component.literal(">"), b -> move(1))
                 .bounds(left + rowWidth - 20, row2, 20, 20).build());
 
-        saveCropButton = addRenderableWidget(Button.builder(Component.translatable(PREFIX + "saveCrop"), b -> saveCrop())
-                .bounds(width - 110, 4, 100, 20).build());
         updateButtons();
     }
 
@@ -104,9 +103,10 @@ public class ShotScreen extends Screen {
         Shot shot = shot();
         favoriteButton.setMessage(Component.translatable(shot.favorite() ? PREFIX + "unstar" : PREFIX + "star"));
         teleportButton.active = shot.metadata() != null && shot.metadata().hasPosition();
-        cropButton.setMessage(Component.translatable(cropping ? PREFIX + "cancelCrop" : PREFIX + "crop"));
-        saveCropButton.visible = cropping;
-        saveCropButton.active = cropping && cropRect() != null;
+        // While cropping, Crop turns into Save Crop and Back into Cancel
+        cropButton.setMessage(Component.translatable(cropping ? PREFIX + "saveCrop" : PREFIX + "crop"));
+        cropButton.active = !cropping || cropRect() != null;
+        backButton.setMessage(Component.translatable(cropping ? PREFIX + "cancelCrop" : PREFIX + "back"));
     }
 
     private void move(int delta) {
@@ -115,6 +115,7 @@ public class ShotScreen extends Screen {
             images.forget(shot().file());
             index = next;
             cropping = false;
+            selecting = false;
             cropStart = cropEnd = null;
             updateButtons();
         }
@@ -180,10 +181,28 @@ public class ShotScreen extends Screen {
 
     // ---- Crop ----
 
+    private void cropPressed() {
+        if (cropping) {
+            saveCrop();
+        } else {
+            toggleCrop();
+        }
+    }
+
     private void toggleCrop() {
         cropping = !cropping;
+        selecting = false;
         cropStart = cropEnd = null;
         updateButtons();
+    }
+
+    private boolean overImage(double mouseX, double mouseY) {
+        ShotTextures.Texture texture = images.get(shot().file());
+        if (texture == null) {
+            return false;
+        }
+        int[] area = imageArea(texture);
+        return mouseX >= area[0] && mouseX < area[0] + area[2] && mouseY >= area[1] && mouseY < area[1] + area[3];
     }
 
     /** Where the image is drawn on screen: x, y, width, height. */
@@ -223,26 +242,51 @@ public class ShotScreen extends Screen {
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
-        if (super.mouseClicked(event, doubleClick)) {
-            return true;
-        }
-        if (cropping && event.button() == 0) {
+        // The image never overlaps a button, so a click on it always starts a selection
+        if (cropping && event.button() == 0 && overImage(event.x(), event.y())) {
             cropStart = toImage(event.x(), event.y());
             cropEnd = cropStart;
+            selecting = true;
             updateButtons();
-            return cropStart != null;
+            return true;
         }
-        return false;
+        return super.mouseClicked(event, doubleClick);
     }
 
     @Override
     public boolean mouseDragged(MouseButtonEvent event, double dragX, double dragY) {
-        if (cropping && cropStart != null) {
-            cropEnd = toImage(event.x(), event.y());
-            updateButtons();
+        if (selecting) {
+            extendSelection(event.x(), event.y());
             return true;
         }
         return super.mouseDragged(event, dragX, dragY);
+    }
+
+    @Override
+    public void mouseMoved(double mouseX, double mouseY) {
+        // Drag events only reach a screen in some cases, so follow the cursor while the button is held
+        if (selecting) {
+            extendSelection(mouseX, mouseY);
+        }
+        super.mouseMoved(mouseX, mouseY);
+    }
+
+    @Override
+    public boolean mouseReleased(MouseButtonEvent event) {
+        if (selecting && event.button() == 0) {
+            extendSelection(event.x(), event.y());
+            selecting = false;
+            return true;
+        }
+        return super.mouseReleased(event);
+    }
+
+    private void extendSelection(double mouseX, double mouseY) {
+        int[] point = toImage(mouseX, mouseY);
+        if (point != null) {
+            cropEnd = point;
+            updateButtons();
+        }
     }
 
     private void saveCrop() {
@@ -254,6 +298,8 @@ public class ShotScreen extends Screen {
         try {
             Path cropped = Crop.save(library, shot.file(), rect[0], rect[1], rect[2], rect[3]);
             ShotMetadata metadata = library.readMetadata(cropped);
+            // Show the new file right away; it sits before the original, like in the gallery
+            images.forget(shot.file());
             shots.add(index, new Shot(cropped, System.currentTimeMillis(), 0, metadata));
             changed = true;
             SystemToast.addOrUpdate(minecraft.gui.toastManager(), SystemToast.SystemToastId.PERIODIC_NOTIFICATION,
@@ -262,6 +308,7 @@ public class ShotScreen extends Screen {
             ScreenshotToolkitClient.LOGGER.warn("Could not crop {}", shot.file(), e);
         }
         cropping = false;
+        selecting = false;
         cropStart = cropEnd = null;
         updateButtons();
     }
@@ -348,6 +395,24 @@ public class ShotScreen extends Screen {
             }
         }
         return super.keyPressed(event);
+    }
+
+    /** For tests: the crop button, the back button and where the image is drawn. */
+    public Button cropButton() {
+        return cropButton;
+    }
+
+    public Button backButton() {
+        return backButton;
+    }
+
+    public int[] imageBounds() {
+        ShotTextures.Texture texture = images.get(shot().file());
+        return texture != null ? imageArea(texture) : null;
+    }
+
+    public Path currentFile() {
+        return shot().file();
     }
 
     @Override

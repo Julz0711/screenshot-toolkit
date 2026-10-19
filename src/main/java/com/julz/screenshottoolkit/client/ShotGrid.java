@@ -24,6 +24,8 @@ public class ShotGrid extends AbstractWidget {
     public static final int THUMB_WIDTH = 128;
     public static final int THUMB_HEIGHT = 72;
     private static final int GAP = 8;
+    // Room around the cells so the selection outline is not cut off at the edges
+    private static final int PADDING = 2;
     private static final int LABEL_HEIGHT = 12;
     private static final int CELL_WIDTH = THUMB_WIDTH + GAP;
     private static final int CELL_HEIGHT = THUMB_HEIGHT + LABEL_HEIGHT + GAP;
@@ -65,7 +67,7 @@ public class ShotGrid extends AbstractWidget {
     }
 
     public int columns() {
-        return Math.max(1, (getWidth() + GAP) / CELL_WIDTH);
+        return Math.max(1, (getWidth() - 2 * PADDING + GAP) / CELL_WIDTH);
     }
 
     private int rows() {
@@ -73,7 +75,7 @@ public class ShotGrid extends AbstractWidget {
     }
 
     private int maxScroll() {
-        return Math.max(0, rows() * CELL_HEIGHT - GAP - getHeight());
+        return Math.max(0, rows() * CELL_HEIGHT - GAP + 2 * PADDING - getHeight());
     }
 
     private void setScroll(double value) {
@@ -83,7 +85,7 @@ public class ShotGrid extends AbstractWidget {
     /** Left edge of the first column, so the grid is centered. */
     private int left() {
         int used = columns() * CELL_WIDTH - GAP;
-        return getX() + (getWidth() - used) / 2;
+        return getX() + PADDING + (getWidth() - 2 * PADDING - used) / 2;
     }
 
     private int indexAt(double mouseX, double mouseY) {
@@ -91,7 +93,7 @@ public class ShotGrid extends AbstractWidget {
             return -1;
         }
         int localX = (int) mouseX - left();
-        int localY = (int) (mouseY - getY() + scroll);
+        int localY = (int) (mouseY - getY() - PADDING + scroll);
         if (localX < 0 || localY < 0 || localX % CELL_WIDTH >= THUMB_WIDTH || localY % CELL_HEIGHT >= THUMB_HEIGHT + LABEL_HEIGHT) {
             return -1;
         }
@@ -123,7 +125,7 @@ public class ShotGrid extends AbstractWidget {
                     break;
                 }
                 int x = left() + column * CELL_WIDTH;
-                int y = getY() + row * CELL_HEIGHT - (int) scroll;
+                int y = getY() + PADDING + row * CELL_HEIGHT - (int) scroll;
                 drawCell(graphics, font, shots.get(index), x, y, index == hovered, index == selected && isFocused());
             }
         }
@@ -216,8 +218,8 @@ public class ShotGrid extends AbstractWidget {
         int top = selected / columns() * CELL_HEIGHT;
         if (top < scroll) {
             setScroll(top);
-        } else if (top + CELL_HEIGHT - GAP > scroll + getHeight()) {
-            setScroll(top + CELL_HEIGHT - GAP - getHeight());
+        } else if (top + CELL_HEIGHT - GAP + 2 * PADDING > scroll + getHeight()) {
+            setScroll(top + CELL_HEIGHT - GAP + 2 * PADDING - getHeight());
         }
     }
 
