@@ -2,27 +2,48 @@ set +e
 for j in $(find ~/.gradle /home/runner/work -name '*.jar' 2>/dev/null); do
   if unzip -l "$j" 2>/dev/null | grep -q 'net/minecraft/client/Minecraft.class'; then MC="$j"; fi
 done
-echo "MC jar: $MC"
-FAPI=$(find ~/.gradle -name 'fabric-*.jar' | grep -E 'fabric-(screen-api|key-mapping|rendering|lifecycle-events|client-gametest|resource-loader)' | tr '\n' ':')
-CP="$MC:$FAPI:$(find ~/.gradle -name '*.jar' | grep -E 'org.lwjgl|com.mojang|joml|gson|guava' | tr '\n' ':')"
-P() { echo "##### $1"; javap -p -cp "$CP" "$1" 2>&1 | grep -v 'lambda\$'; }
-C() { echo "##### CODE $1"; javap -p -c -cp "$CP" "$1" 2>&1 | grep -E '^  [a-z].*\(|invoke|getfield|putfield|getstatic|ldc' ; }
-echo "== packages"
-unzip -l "$MC" | grep -oE 'net/minecraft/client/[A-Za-z/]*\.class' | grep -v '\$' | grep -iE 'screenshot|toast|gui/screens/[A-Z]|texture/|Keyboard|Mouse|gui/components/[A-Z]|Util|platform/' | sed 's/.class$//' | sort
-unzip -l "$MC" | grep -oE '(com/mojang/blaze3d|net/minecraft/util|net/minecraft)/[A-Za-z]*\.class' | grep -iE 'NativeImage|Util\.|Screenshot|Clipboard' | sort
-for c in net.minecraft.client.Screenshot com.mojang.blaze3d.platform.NativeImage net.minecraft.client.KeyboardHandler \
-  net.minecraft.client.renderer.texture.DynamicTexture net.minecraft.client.renderer.texture.AbstractTexture net.minecraft.client.renderer.texture.TextureManager \
-  net.minecraft.client.gui.GuiGraphicsExtractor net.minecraft.client.gui.screens.Screen net.minecraft.client.gui.components.events.AbstractContainerEventHandler \
-  net.minecraft.client.gui.components.AbstractWidget net.minecraft.client.gui.components.Button 'net.minecraft.client.gui.components.Button$Builder' net.minecraft.client.gui.components.EditBox net.minecraft.client.gui.components.CycleButton \
-  net.minecraft.client.gui.components.toasts.Toast net.minecraft.client.gui.components.toasts.ToastManager net.minecraft.client.gui.components.toasts.SystemToast \
-  net.minecraft.client.gui.screens.ConfirmScreen net.minecraft.client.gui.Gui net.minecraft.client.Options net.minecraft.client.Minecraft net.minecraft.Util \
-  net.minecraft.util.Util 'net.minecraft.util.Util$OS' net.minecraft.client.input.MouseButtonEvent net.minecraft.client.input.KeyEvent net.minecraft.client.input.MouseButtonInfo \
-  com.mojang.blaze3d.pipeline.RenderTarget net.minecraft.client.renderer.RenderPipelines net.minecraft.client.multiplayer.ServerData net.minecraft.client.gui.components.ChatComponent \
-  net.minecraft.client.renderer.GameRenderer net.minecraft.client.gui.screens.options.OptionsSubScreen net.minecraft.client.gui.components.ObjectSelectionList net.minecraft.client.gui.components.AbstractSelectionList \
-  net.minecraft.client.gui.components.Renderable net.minecraft.client.gui.layouts.HeaderAndFooterLayout net.minecraft.client.input.InputWithModifiers net.minecraft.client.input.CharacterEvent \
-  net.fabricmc.fabric.api.client.screen.v1.ScreenEvents net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext net.fabricmc.fabric.api.client.gametest.v1.TestInput \
-  net.minecraft.server.MinecraftServer net.minecraft.world.level.storage.WorldData com.mojang.blaze3d.platform.Window com.mojang.blaze3d.platform.InputConstants; do P "$c"; done
-C net.minecraft.client.Screenshot
-C net.minecraft.client.KeyboardHandler | grep -iE -B2 -A40 'screenshot' | head -150
-echo "== screen in code"; javap -p -c -cp "$CP" net.minecraft.client.Minecraft | grep -iE 'Field .*screen|Method .*Screen|toast|Field .*gui:|hideGui' | sort | uniq -c | head -40
-echo "== options hideGui"; javap -p -cp "$CP" net.minecraft.client.Options | grep -iE 'hideGui|screenshot|keyScreenshot|hide'
+CP="$MC:$(find ~/.gradle -name '*.jar' | grep -E 'fabric|org.lwjgl|com.mojang|joml|gson|guava|commons-lang|fastutil|slf4j' | tr '\n' ':')"
+P() { echo "##### $1"; javap -p -cp "$CP" "$1" 2>&1 | grep -v 'lambda\$' | grep -E "${2:-.}"; }
+P net.minecraft.client.gui.Hud
+P 'net.minecraft.network.chat.ClickEvent$OpenFile'
+P net.minecraft.client.gui.components.events.ContainerEventHandler
+P net.minecraft.client.gui.components.events.GuiEventListener
+P net.minecraft.server.MinecraftServer 'WorldData|getWorldPath|LevelName'
+P net.minecraft.client.multiplayer.ClientLevel 'Time|time|dimension|Clock|clock'
+P net.minecraft.world.level.Level 'Time|time|dimension|Clock|clock'
+P net.minecraft.world.entity.Entity ' get[XYZ]\(|getYRot|getXRot|position\(|level\('
+P net.minecraft.client.Minecraft 'showDebugChat|getCurrentServer|execute|tell|schedule|getToastManager|getWindow|isWindowActive|hasSingleplayer|getSingleplayerServer|setScreen'
+P 'net.minecraft.client.gui.components.toasts.Toast$Visibility'
+P net.minecraft.client.renderer.RenderPipelines 'GUI'
+P net.minecraft.client.gui.components.Tooltip 'static'
+P net.minecraft.client.KeyMapping 'public'
+P 'net.minecraft.client.KeyMapping$Category'
+P com.mojang.blaze3d.platform.ClipboardManager
+P org.lwjgl.sdl.SDLClipboard
+P net.minecraft.resources.ResourceKey 'identifier|location|public'
+P net.minecraft.resources.Identifier 'public static|toString'
+P net.minecraft.client.gui.components.AbstractButton 'public|protected'
+P net.minecraft.client.gui.components.StringWidget 'public'
+P net.minecraft.client.gui.components.Checkbox 'public'
+P net.minecraft.client.gui.layouts.LinearLayout 'public static|public'
+P net.minecraft.network.chat.Component 'static'
+P net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents
+P net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper
+P net.minecraft.client.gui.components.ImageButton 'public'
+P net.minecraft.client.gui.components.SpriteIconButton 'public'
+P net.minecraft.client.gui.screens.Screen 'mouse|Mouse|key'
+echo "== who calls Screenshot.grab / takeScreenshot"
+for c in $(unzip -l "$MC" | grep -oE 'net/minecraft/client/[A-Za-z/$]*\.class' | sed 's/.class$//;s#/#.#g'); do
+  out=$(javap -p -c -cp "$CP" "$c" 2>/dev/null | grep -E '^  [a-z].*\(|Screenshot\.(grab|takeScreenshot)|ClickEvent\$OpenFile|hideGui|OpenFile\.|openFile|openPath|openUri|SDL_OpenURL|showItemInFolder|ShellExecute' | grep -B1 -E 'Screenshot\.|OpenFile|hideGui|openFile|openPath|openUri|SDL_OpenURL')
+  if [ -n "$out" ]; then echo "--- $c"; echo "$out"; fi
+done
+echo "== classes with open in name"
+unzip -l "$MC" | grep -oE '[A-Za-z/]*(Open|Opener|Browser|Desktop|FileUtil|Platform)[A-Za-z]*\.class' | sort -u
+echo "== CODE Screen.defaultHandleClickEvent"
+javap -p -c -cp "$CP" net.minecraft.client.gui.screens.Screen | sed -n '/defaultHandleClickEvent/,/^$/p' | grep -E 'invoke|getfield|checkcast|instanceof' | head -60
+echo "== CODE Gui.handleKeybinds screenshot"
+javap -p -c -cp "$CP" net.minecraft.client.gui.Gui | sed -n '/void handleKeybinds/,/^$/p' | grep -E 'invoke|getfield' | head -40
+javap -p -c -cp "$CP" net.minecraft.client.KeyboardHandler | sed -n '/void keyPress/,/^$/p' | grep -E -B3 -A3 'keyScreenshot|Screenshot' | head -60
+echo "== Hud CODE hide"
+javap -p -c -cp "$CP" net.minecraft.client.gui.Hud | grep -iE 'hide|hidden' | sort | uniq -c | head
+javap -p -c -cp "$CP" net.minecraft.client.renderer.GameRenderer | grep -iE 'hide|hidden|renderHand|Hand' | sort | uniq -c | head -20
