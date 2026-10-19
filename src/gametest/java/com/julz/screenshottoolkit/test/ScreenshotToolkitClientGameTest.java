@@ -111,6 +111,8 @@ public class ScreenshotToolkitClientGameTest implements FabricClientGameTest {
     private void testCropWithMouse(ClientGameTestContext context, ScreenshotLibrary library, Path source) {
         context.waitFor(client -> ((ShotScreen) client.gui.screen()).imageBounds() != null);
         clickButton(context, screen -> screen.cropButton());
+        boolean cropping = context.computeOnClient(client -> ((ShotScreen) client.gui.screen()).isCropping());
+        assertTrue(cropping, "clicking Crop starts cropping");
         int[] area = context.computeOnClient(client -> ((ShotScreen) client.gui.screen()).imageBounds());
         int scale = context.computeOnClient(client -> client.getWindow().getGuiScale());
         TestInput input = context.getInput();
@@ -125,12 +127,16 @@ public class ScreenshotToolkitClientGameTest implements FabricClientGameTest {
         input.releaseMouse(0);
         context.waitTick();
         context.takeScreenshot("screenshot-toolkit-crop-selection");
-        boolean selected = context.computeOnClient(client -> ((ShotScreen) client.gui.screen()).cropButton().active);
-        assertTrue(selected, "dragging over the image selects an area");
+        int[] selection = context.computeOnClient(client -> ((ShotScreen) client.gui.screen()).cropSelection());
+        assertTrue(selection != null, "dragging over the image selects an area, image at " + Arrays.toString(area));
+        boolean saveActive = context.computeOnClient(client -> ((ShotScreen) client.gui.screen()).cropButton().active);
+        assertTrue(saveActive, "Save Crop is enabled after selecting " + Arrays.toString(selection));
 
         clickButton(context, screen -> screen.cropButton());
         Path cropped = library.directory().resolve("2026-01-01_10.00.00_crop.png");
-        context.waitFor(client -> Files.exists(cropped));
+        boolean stillCropping = context.computeOnClient(client -> ((ShotScreen) client.gui.screen()).isCropping());
+        assertTrue(!stillCropping, "clicking Save Crop leaves crop mode");
+        context.waitFor(client -> Files.exists(cropped), 20);
         try (NativeImage image = Thumbnails.read(cropped)) {
             // Half of 320x180, give or take the rounding of screen pixels to image pixels
             assertTrue(Math.abs(image.getWidth() - 160) <= 8, "cropped width " + image.getWidth());

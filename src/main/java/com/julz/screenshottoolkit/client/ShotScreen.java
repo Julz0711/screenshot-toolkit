@@ -292,6 +292,7 @@ public class ShotScreen extends Screen {
     private void saveCrop() {
         int[] rect = cropRect();
         if (rect == null) {
+            ScreenshotToolkitClient.LOGGER.debug("Save Crop pressed without a selection");
             return;
         }
         Shot shot = shot();
@@ -413,6 +414,14 @@ public class ShotScreen extends Screen {
 
     public Path currentFile() {
         return shot().file();
+    }
+
+    public boolean isCropping() {
+        return cropping;
+    }
+
+    public int[] cropSelection() {
+        return cropRect();
     }
 
     @Override
