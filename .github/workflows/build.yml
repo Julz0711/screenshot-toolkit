@@ -1,0 +1,43 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build and run unit tests
+        run: ./gradlew build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: screenshot-toolkit
+          path: build/libs/*.jar
+
+  client-game-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Install a virtual display
+        run: sudo apt-get update && sudo apt-get install -y xvfb libgl1-mesa-dri
+      - name: Run client game tests
+        run: xvfb-run -a -s "-screen 0 1920x1080x24" ./gradlew runClientGameTest
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: game-test-screenshots
+          path: build/run/**/screenshots/*.png
+          if-no-files-found: ignore

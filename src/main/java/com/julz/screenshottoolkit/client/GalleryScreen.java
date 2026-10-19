@@ -1,0 +1,208 @@
+package com.julz.screenshottoolkit.client;
+
+import com.julz.screenshottoolkit.core.ScreenshotLibrary;
+import com.julz.screenshottoolkit.core.Shot;
+import com.julz.screenshottoolkit.core.ShotFilter;
+import com.mojang.blaze3d.Blaze3D;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.CycleButton;
+import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.network.chat.Component;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+
+/** The in-game gallery: a grid of thumbnails with search and filters. */
+public class GalleryScreen extends Screen {
+    private static final String PREFIX = "screenshot-toolkit.gallery.";
+    // Sentinel for "every world" in the world filter
+    private static final String ALL_WORLDS = "";
+
+    private final Screen parent;
+    private final ScreenshotLibrary library;
+    private final ShotTextures thumbnails;
+    private ShotFilter filter;
+    private List<Shot> allShots;
+    private List<Shot> visibleShots = List.of();
+    private CompletableFuture<List<Shot>> loading;
+    private Shot reselect;
+    private boolean keepTextures;
+
+    private ShotGrid grid;
+    private EditBox search;
+
+    public GalleryScreen(Screen parent) {
+        this(parent, ShotFilter.ALL, null);
+    }
+
+    private GalleryScreen(Screen parent, ShotFilter filter, Shot reselect) {
+        super(Component.translatable(PREFIX + "title"));
+        this.parent = parent;
+        this.library = ScreenshotToolkitClient.library();
+        this.thumbnails = new ShotTextures(image -> Thumbnails.load(library, image));
+        this.filter = filter;
+        this.reselect = reselect;
+    }
+
+    @Override
+    protected void init() {
+        if (allShots == null && loading == null) {
+            reload();
+        }
+        int top = 22;
+        int rowWidth = Math.min(width - 20, 520);
+        int left = (width - rowWidth) / 2;
+        int gap = 4;
+        int searchWidth = (rowWidth - 3 * gap) * 34 / 100;
+        int buttonWidth = (rowWidth - 3 * gap - searchWidth) / 3;
+
+        String previousSearch = search != null ? search.getValue() : filter.search();
+        search = addRenderableWidget(new EditBox(font, left, top, searchWidth, 20, Component.translatable(PREFIX + "search")));
+        search.setHint(Component.translatable(PREFIX + "search"));
+        search.setValue(previousSearch == null ? "" : previousSearch);
+        search.setResponder(text -> applyFilter(filter.withSearch(text)));
+
+        int x = left + searchWidth + gap;
+        addRenderableWidget(CycleButton.onOffBuilder(filter.favoritesOnly())
+                .create(x, top, buttonWidth, 20, Component.translatable(PREFIX + "favorites"),
+                        (button, value) -> applyFilter(filter.withFavoritesOnly(value))));
+        x += buttonWidth + gap;
+        List<String> worlds = new ArrayList<>();
+        worlds.add(ALL_WORLDS);
+        if (allShots != null) {
+            worlds.addAll(ScreenshotLibrary.worlds(allShots));
+        }
+        String currentWorld = filter.world() != null && worlds.contains(filter.world()) ? filter.world() : ALL_WORLDS;
+        addRenderableWidget(CycleButton.<String>builder(world -> world.isEmpty()
+                        ? Component.translatable(PREFIX + "world.all") : Component.literal(world), currentWorld)
+                .withValues(worlds)
+                .create(x, top, buttonWidth, 20, Component.translatable(PREFIX + "world"),
+                        (button, value) -> applyFilter(filter.withWorld(value.isEmpty() ? null : value))));
+        x += buttonWidth + gap;
+        addRenderableWidget(CycleButton.<ShotFilter.Period>builder(period -> Component.translatable(PREFIX + "period." + period.name().toLowerCase()), filter.period())
+                .withValues(ShotFilter.Period.values())
+                .create(x, top, buttonWidth, 20, Component.translatable(PREFIX + "period"),
+                        (button, value) -> applyFilter(filter.withPeriod(value))));
+
+        grid = addRenderableWidget(new ShotGrid(10, top + 28, width - 20, height - top - 28 - 34, thumbnails, this::open));
+
+        int footerY = height - 28;
+        int footerWidth = Math.min(width - 20, 3 * 100 + 2 * gap);
+        int footerButton = (footerWidth - 2 * gap) / 3;
+        int footerLeft = (width - footerWidth) / 2;
+        addRenderableWidget(Button.builder(Component.translatable(PREFIX + "openFolder"), button -> openFolder())
+                .bounds(footerLeft, footerY, footerButton, 20).build());
+        addRenderableWidget(Button.builder(Component.translatable(PREFIX + "settings"),
+                        button -> {
+                            keepTextures = true;
+                            minecraft.gui.setScreen(new ScreenshotToolkitConfigScreen(this));
+                        })
+                .bounds(footerLeft + footerButton + gap, footerY, footerButton, 20).build());
+        addRenderableWidget(Button.builder(Component.translatable("gui.done"), button -> onClose())
+                .bounds(footerLeft + 2 * (footerButton + gap), footerY, footerButton, 20).build());
+
+        refreshGrid();
+        if (reselect != null && allShots != null) {
+            visibleShots.stream().filter(shot -> shot.file().equals(reselect.file())).findFirst().ifPresent(grid::select);
+            reselect = null;
+        }
+        setInitialFocus(grid);
+        keepTextures = false;
+    }
+
+    /** Lists the folder in the background; the grid shows "Loading" meanwhile. */
+    private void reload() {
+        loading = CompletableFuture.supplyAsync(library::listUnchecked, Thumbnails.EXECUTOR);
+    }
+
+    @Override
+    public void tick() {
+        if (loading != null && loading.isDone()) {
+            allShots = loading.exceptionally(e -> {
+                ScreenshotToolkitClient.LOGGER.error("Could not list {}", library.directory(), e);
+                return List.of();
+            }).join();
+            loading = null;
+            // Rebuilt so the world filter lists the worlds just found
+            rebuildWidgets();
+        }
+    }
+
+    private void applyFilter(ShotFilter newFilter) {
+        filter = newFilter;
+        refreshGrid();
+    }
+
+    private void refreshGrid() {
+        if (grid == null) {
+            return;
+        }
+        if (allShots == null) {
+            grid.setShots(List.of(), Component.translatable(PREFIX + "loading"));
+            return;
+        }
+        long now = System.currentTimeMillis();
+        visibleShots = allShots.stream().filter(shot -> filter.matches(shot, now)).toList();
+        Component empty = Component.translatable(allShots.isEmpty() ? PREFIX + "empty" : PREFIX + "noMatch");
+        grid.setShots(visibleShots, empty);
+    }
+
+    private void open(Shot shot) {
+        keepTextures = true;
+        minecraft.gui.setScreen(new ShotScreen(this, visibleShots, visibleShots.indexOf(shot)));
+    }
+
+    /** Called by the viewer when it closes, so changes it made show up. */
+    void returnFrom(Shot lastViewed, boolean changed) {
+        reselect = lastViewed;
+        if (changed) {
+            allShots = null;
+            reload();
+        }
+        minecraft.gui.setScreen(this);
+    }
+
+    private void openFolder() {
+        try {
+            java.nio.file.Files.createDirectories(library.directory());
+            Blaze3D.openPath(library.directory());
+        } catch (IOException e) {
+            ScreenshotToolkitClient.LOGGER.warn("Could not open {}", library.directory(), e);
+        }
+    }
+
+    @Override
+    public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
+        super.extractRenderState(graphics, mouseX, mouseY, partialTick);
+        graphics.centeredText(font, title, width / 2, 8, 0xFFFFFFFF);
+        if (allShots != null) {
+            Component count = Component.translatable(PREFIX + "count", visibleShots.size(), allShots.size());
+            graphics.text(font, count, width - 10 - font.width(count), height - 22, 0xFF808080, false);
+        }
+    }
+
+    public boolean isLoaded() {
+        return allShots != null;
+    }
+
+    public List<Shot> visibleShots() {
+        return visibleShots;
+    }
+
+    @Override
+    public void onClose() {
+        minecraft.gui.setScreen(parent);
+    }
+
+    @Override
+    public void removed() {
+        // The viewer and settings screens come back here, so only release when really leaving
+        if (!keepTextures) {
+            thumbnails.close();
+        }
+    }
+}

@@ -1,0 +1,36 @@
+{
+	"schemaVersion": 1,
+	"id": "screenshot-toolkit",
+	"version": "${version}",
+	"name": "Screenshot Toolkit",
+	"description": "Turns F2 into a complete screenshot workflow: copy to clipboard, an in-game gallery with favorites and filters, a clean-shot key, crop and coordinates for every shot.",
+	"authors": [
+		"Julz"
+	],
+	"contact": {
+		"sources": "https://github.com/Julz0711/screenshot-toolkit",
+		"issues": "https://github.com/Julz0711/screenshot-toolkit/issues"
+	},
+	"license": "CC0-1.0",
+	"environment": "client",
+	"entrypoints": {
+		"client": [
+			"com.julz.screenshottoolkit.client.ScreenshotToolkitClient"
+		],
+		"modmenu": [
+			"com.julz.screenshottoolkit.compat.ModMenuIntegration"
+		]
+	},
+	"mixins": [
+		"screenshot-toolkit.mixins.json"
+	],
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "~26.3",
+		"java": ">=25",
+		"fabric-api": "*"
+	},
+	"suggests": {
+		"modmenu": "*"
+	}
+}

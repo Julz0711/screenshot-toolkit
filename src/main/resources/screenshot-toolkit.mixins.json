@@ -1,0 +1,12 @@
+{
+	"required": true,
+	"package": "com.julz.screenshottoolkit.mixin",
+	"compatibilityLevel": "JAVA_25",
+	"client": [
+		"MinecraftMixin",
+		"ScreenshotMixin"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	}
+}
