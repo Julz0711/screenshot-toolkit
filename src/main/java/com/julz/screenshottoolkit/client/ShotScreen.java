@@ -184,11 +184,7 @@ public class ShotScreen extends Screen {
 
     // ---- Crop ----
 
-    private int cropPresses;
-
     private void cropPressed() {
-        cropPresses++;
-        ScreenshotToolkitClient.LOGGER.info("Crop button pressed (cropping: {})", cropping);
         if (cropping) {
             saveCrop();
         } else {
@@ -249,26 +245,15 @@ public class ShotScreen extends Screen {
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
-        ScreenshotToolkitClient.LOGGER.info("DEBUG click {} at {},{} child {} crop button {},{} {}x{} active {} visible {}",
-                event.button(), event.x(), event.y(), getChildAt(event.x(), event.y()).orElse(null),
-                cropButton.getX(), cropButton.getY(), cropButton.getWidth(), cropButton.getHeight(), cropButton.active, cropButton.visible);
         // The image never overlaps a button, so a click on it always starts a selection
-        if (cropping && event.button() == 0 && overImage(event.x(), event.y())) {
+        if (cropping && event.button() == InputConstants.MOUSE_BUTTON_LEFT && overImage(event.x(), event.y())) {
             cropStart = toImage(event.x(), event.y());
             cropEnd = cropStart;
             selecting = true;
             updateButtons();
             return true;
         }
-        getChildAt(event.x(), event.y()).ifPresent(child -> ScreenshotToolkitClient.LOGGER.info(
-                "DEBUG child is crop button {} message {} children {}", child == cropButton,
-                child instanceof Button b ? b.getMessage().getString() : "?", children().size()));
-        boolean over = cropButton.isMouseOver(event.x(), event.y());
-        boolean activeNow = cropButton.isActive();
-        boolean handled = super.mouseClicked(event, doubleClick);
-        ScreenshotToolkitClient.LOGGER.info("DEBUG crop over {} active {} handled {} presses {} focused {} dragging {}",
-                over, activeNow, handled, cropPresses, getFocused(), isDragging());
-        return handled;
+        return super.mouseClicked(event, doubleClick);
     }
 
     @Override
@@ -291,7 +276,7 @@ public class ShotScreen extends Screen {
 
     @Override
     public boolean mouseReleased(MouseButtonEvent event) {
-        if (selecting && event.button() == 0) {
+        if (selecting && event.button() == InputConstants.MOUSE_BUTTON_LEFT) {
             extendSelection(event.x(), event.y());
             selecting = false;
             return true;
@@ -439,10 +424,6 @@ public class ShotScreen extends Screen {
     /** Where the screen last saw the mouse, in GUI pixels. */
     public int[] lastMouse() {
         return new int[]{lastMouseX, lastMouseY};
-    }
-
-    public int cropPresses() {
-        return cropPresses;
     }
 
     public boolean isCropping() {

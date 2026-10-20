@@ -10,6 +10,7 @@ import com.julz.screenshottoolkit.config.ModConfig;
 import com.julz.screenshottoolkit.core.ScreenshotLibrary;
 import com.julz.screenshottoolkit.core.Shot;
 import com.julz.screenshottoolkit.core.ShotMetadata;
+import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.platform.NativeImage;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.TestInput;
@@ -113,19 +114,18 @@ public class ScreenshotToolkitClientGameTest implements FabricClientGameTest {
         double scale = cursorScale(context);
         clickButton(context, scale, screen -> screen.cropButton());
         boolean cropping = context.computeOnClient(client -> ((ShotScreen) client.gui.screen()).isCropping());
-        int presses = context.computeOnClient(client -> ((ShotScreen) client.gui.screen()).cropPresses());
-        assertTrue(cropping, "clicking Crop starts cropping; the button fired " + presses + " times");
+        assertTrue(cropping, "clicking Crop starts cropping");
         int[] area = context.computeOnClient(client -> ((ShotScreen) client.gui.screen()).imageBounds());
         TestInput input = context.getInput();
         input.setCursorPos((area[0] + area[2] * 0.25) * scale, (area[1] + area[3] * 0.25) * scale);
         context.waitTick();
-        input.holdMouse(0);
+        input.holdMouse(InputConstants.MOUSE_BUTTON_LEFT);
         context.waitTick();
         for (int step = 1; step <= 5; step++) {
             input.moveCursor(area[2] * 0.1 * scale, area[3] * 0.1 * scale);
             context.waitTick();
         }
-        input.releaseMouse(0);
+        input.releaseMouse(InputConstants.MOUSE_BUTTON_LEFT);
         context.waitTick();
         context.takeScreenshot("screenshot-toolkit-crop-selection");
         int[] selection = context.computeOnClient(client -> ((ShotScreen) client.gui.screen()).cropSelection());
@@ -174,7 +174,7 @@ public class ScreenshotToolkitClientGameTest implements FabricClientGameTest {
         int[] seen = context.computeOnClient(client -> ((ShotScreen) client.gui.screen()).lastMouse());
         assertTrue(Math.abs(seen[0] - center[0]) <= 2 && Math.abs(seen[1] - center[1]) <= 2,
                 "cursor on the button at " + Arrays.toString(center) + ", screen sees " + Arrays.toString(seen) + ", scale " + scale);
-        context.getInput().pressMouse(0);
+        context.getInput().pressMouse(InputConstants.MOUSE_BUTTON_LEFT);
         context.waitTicks(2);
     }
 
