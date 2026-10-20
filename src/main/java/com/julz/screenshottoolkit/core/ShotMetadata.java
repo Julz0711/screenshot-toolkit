@@ -23,6 +23,12 @@ public class ShotMetadata {
     // Wall clock time in milliseconds since the epoch
     public Long takenAt;
     public boolean favorite;
+    // Albums the player put the screenshot in; null when none
+    public java.util.List<String> albums;
+
+    public boolean inAlbum(String album) {
+        return albums != null && albums.stream().anyMatch(name -> name.equalsIgnoreCase(album));
+    }
 
     public boolean hasPosition() {
         return x != null && y != null && z != null;

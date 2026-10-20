@@ -126,6 +126,46 @@ class ScreenshotLibraryTest {
     }
 
     @Test
+    void albumsLiveInSidecarsAndRenameEverywhere() throws IOException {
+        ScreenshotLibrary library = new ScreenshotLibrary(dir);
+        Path a = shot("a.png", NOW);
+        Path b = shot("b.png", NOW - 1);
+        Path c = shot("c.png", NOW - 2);
+        assertEquals("Builds", library.createAlbum("  Builds ", library.list()));
+        assertThrows(java.nio.file.FileAlreadyExistsException.class, () -> library.createAlbum("builds", library.list()));
+        assertThrows(IllegalArgumentException.class, () -> library.createAlbum("   ", library.list()));
+        library.createAlbum("Empty", library.list());
+
+        library.setInAlbum(a, "Builds", true);
+        library.setInAlbum(b, "Builds", true);
+        library.setInAlbum(b, "Nether", true);
+        library.setInAlbum(b, "Nether", true);
+        library.moveToTrash(c);
+        assertEquals(List.of("Builds", "Empty", "Nether"), library.albums(library.list()));
+        assertEquals(List.of("Builds", "Nether"), library.list().get(1).albums(), "adding twice keeps one entry");
+        assertEquals(2, library.list().stream().filter(s -> ShotFilter.ALL.withAlbum("builds").matches(s, NOW)).count());
+
+        // A trashed screenshot follows the rename
+        Path trashed = library.listTrash().getFirst().file();
+        library.restoreFromTrash(trashed, "c.png");
+        library.setInAlbum(c, "Builds", true);
+        library.moveToTrash(c);
+
+        assertEquals("Castles", library.renameAlbum("Builds", "Castles", library.list()));
+        assertTrue(library.list().stream().allMatch(s -> !s.inAlbum("Builds")));
+        assertEquals(2, library.list().stream().filter(s -> s.inAlbum("Castles")).count());
+        assertTrue(library.listTrash().getFirst().inAlbum("Castles"));
+        assertThrows(java.nio.file.FileAlreadyExistsException.class, () -> library.renameAlbum("Castles", "nether", library.list()));
+        assertEquals("CASTLES", library.renameAlbum("Castles", "CASTLES", library.list()), "a change of case is fine");
+
+        library.deleteAlbum("Nether", library.list());
+        assertEquals(List.of("CASTLES", "Empty"), library.albums(library.list()));
+        assertTrue(Files.exists(b), "deleting an album keeps its screenshots");
+        library.setInAlbum(a, "CASTLES", false);
+        assertNull(library.readMetadata(a).albums, "an empty album list is not saved");
+    }
+
+    @Test
     void daysLeftRoundsUp() {
         long day = Duration.ofDays(1).toMillis();
         assertEquals(7, ScreenshotLibrary.daysLeft(NOW, 7, NOW));

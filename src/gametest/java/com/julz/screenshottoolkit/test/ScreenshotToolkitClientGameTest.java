@@ -1,8 +1,10 @@
 package com.julz.screenshottoolkit.test;
 
+import com.julz.screenshottoolkit.client.AlbumScreen;
 import com.julz.screenshottoolkit.client.Crop;
 import com.julz.screenshottoolkit.client.CropChoiceScreen;
 import com.julz.screenshottoolkit.client.GalleryScreen;
+import com.julz.screenshottoolkit.client.NameScreen;
 import com.julz.screenshottoolkit.client.RenameScreen;
 import com.julz.screenshottoolkit.client.ScreenshotToolkitClient;
 import com.julz.screenshottoolkit.client.ScreenshotToolkitConfigScreen;
@@ -94,6 +96,7 @@ public class ScreenshotToolkitClientGameTest implements FabricClientGameTest {
         testDragSelect(context, library);
         testThumbnailSize(context);
         testTrash(context, library);
+        testAlbums(context, library);
 
         // The viewer opens on the starred screenshot
         context.runOnClient(client -> {
@@ -324,6 +327,64 @@ public class ScreenshotToolkitClientGameTest implements FabricClientGameTest {
         context.waitForScreen(GalleryScreen.class);
         context.waitFor(client -> ((GalleryScreen) client.gui.screen()).isLoaded()
                 && ((GalleryScreen) client.gui.screen()).visibleShots().stream().anyMatch(shot -> shot.file().equals(green)));
+    }
+
+    /** Puts two screenshots in a new album, shows only that album, then all screenshots again. */
+    private void testAlbums(ClientGameTestContext context, ScreenshotLibrary library) {
+        Path green = library.directory().resolve("2026-01-02_10.00.00.png");
+        Path blue = library.directory().resolve("2026-01-03_10.00.00.png");
+        int scale = context.computeOnClient(client -> client.getWindow().getGuiScale());
+        for (Path file : List.of(green, blue)) {
+            context.runOnClient(client -> {
+                GalleryScreen gallery = (GalleryScreen) client.gui.screen();
+                gallery.grid().select(shotFor(gallery, file));
+                gallery.setFocused(gallery.grid());
+            });
+            context.getInput().pressKey(InputConstants.KEY_SPACE);
+            context.waitTick();
+        }
+        clickCenter(context, scale, client -> ((GalleryScreen) client.gui.screen()).bulkAlbumButton());
+        context.waitForScreen(AlbumScreen.class);
+        clickCenter(context, scale, client -> ((AlbumScreen) client.gui.screen()).newButton());
+        context.waitForScreen(NameScreen.class);
+        context.runOnClient(client -> ((NameScreen) client.gui.screen()).nameBox().setValue("Builds"));
+        context.getInput().pressKey(InputConstants.KEY_RETURN);
+        context.waitForScreen(AlbumScreen.class);
+        assertTrue(library.readMetadata(green).inAlbum("Builds") && library.readMetadata(blue).inAlbum("Builds"),
+                "a new album made while adding gets the selected screenshots");
+        context.waitTicks(2);
+        context.takeScreenshot("screenshot-toolkit-albums");
+        context.getInput().pressKey(InputConstants.KEY_ESCAPE);
+        context.waitForScreen(GalleryScreen.class);
+        context.waitFor(client -> ((GalleryScreen) client.gui.screen()).isLoaded());
+
+        // Show only the album
+        clickCenter(context, scale, client -> ((GalleryScreen) client.gui.screen()).albumsButton());
+        context.waitForScreen(AlbumScreen.class);
+        clickCenter(context, scale, client -> ((AlbumScreen) client.gui.screen()).albumButtons().get(1));
+        context.waitForScreen(GalleryScreen.class);
+        context.waitFor(client -> ((GalleryScreen) client.gui.screen()).isLoaded());
+        List<Path> shown = context.computeOnClient(client -> ((GalleryScreen) client.gui.screen()).visibleShots().stream().map(Shot::file).toList());
+        assertTrue(shown.size() == 2 && shown.contains(green) && shown.contains(blue), "the album shows its two screenshots, got " + shown);
+        context.waitTicks(5);
+        context.takeScreenshot("screenshot-toolkit-gallery-album");
+
+        // And everything again
+        clickCenter(context, scale, client -> ((GalleryScreen) client.gui.screen()).albumsButton());
+        context.waitForScreen(AlbumScreen.class);
+        clickCenter(context, scale, client -> ((AlbumScreen) client.gui.screen()).albumButtons().getFirst());
+        context.waitForScreen(GalleryScreen.class);
+        boolean all = context.computeOnClient(client -> ((GalleryScreen) client.gui.screen()).filter().album() == null);
+        assertTrue(all, "All Screenshots clears the album filter");
+    }
+
+    private static void clickCenter(ClientGameTestContext context, int scale, Function<Minecraft, Button> button) {
+        int[] center = context.computeOnClient(client -> {
+            Button b = button.apply(client);
+            assertTrue(b.visible && b.active, "button " + b.getMessage().getString() + " can be pressed");
+            return new int[]{b.getX() + b.getWidth() / 2, b.getY() + b.getHeight() / 2};
+        });
+        clickAt(context, scale, center[0], center[1]);
     }
 
     /** Scrolling zooms in on the image and a double click fits it again. */

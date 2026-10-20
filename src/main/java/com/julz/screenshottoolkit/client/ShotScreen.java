@@ -573,6 +573,9 @@ public class ShotScreen extends Screen {
             }
         }
         parts.add(DATE.format(Instant.ofEpochMilli(shot.takenAt())));
+        if (!shot.albums().isEmpty()) {
+            parts.add(String.join(", ", shot.albums()));
+        }
         return Component.literal(String.join("  ·  ", parts));
     }
 

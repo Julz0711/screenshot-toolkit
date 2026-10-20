@@ -46,11 +46,13 @@ public class GalleryScreen extends Screen {
     private ShotGrid grid;
     private Button undoButton;
     private Button trashButton;
+    private Button albumsButton;
     // The footer while nothing is checked, and the bulk actions that replace it while something is
     private final List<Button> normalFooter = new ArrayList<>();
     private final List<Button> bulkFooter = new ArrayList<>();
     private Button bulkStarButton;
     private Button bulkDeleteButton;
+    private Button bulkAlbumButton;
     /** Deletes from the grid, newest last; each is one click or key press, so Undo brings back a whole batch. */
     private final Deque<List<Deleted>> deleted = new ArrayDeque<>();
 
@@ -114,6 +116,9 @@ public class GalleryScreen extends Screen {
                         (button, value) -> applyFilter(filter.withPeriod(value))));
 
         // Top right, across from the title, like the bin in a photo app
+        // Top left, across from Trash
+        albumsButton = addRenderableWidget(Button.builder(Component.translatable(PREFIX + "albums"), button -> openAlbums(List.of()))
+                .bounds(margin, 5, 60, 20).build());
         trashButton = addRenderableWidget(Button.builder(Component.translatable(PREFIX + "trash"), button -> openTrash())
                 .bounds(width - margin - 60, 5, 60, 20).build());
 
@@ -142,8 +147,8 @@ public class GalleryScreen extends Screen {
                 .bounds(footerLeft + 2 * (footerButton + gap), footerY, footerButton, 20).build()));
 
         // Bulk actions take the whole footer row while screenshots are checked
-        int bulkWidth = Math.min(width - 2 * margin, 4 * 100 + 3 * gap);
-        int bulkButton = (bulkWidth - 3 * gap) / 4;
+        int bulkWidth = Math.min(width - 2 * margin, 5 * 90 + 4 * gap);
+        int bulkButton = (bulkWidth - 4 * gap) / 5;
         int bulkLeft = (width - bulkWidth) / 2;
         bulkFooter.clear();
         bulkFooter.add(addRenderableWidget(Button.builder(Component.translatable(PREFIX + "selectAll"), button -> grid.checkAll())
@@ -151,11 +156,14 @@ public class GalleryScreen extends Screen {
         bulkStarButton = addRenderableWidget(Button.builder(Component.empty(), button -> starChecked())
                 .bounds(bulkLeft + bulkButton + gap, footerY, bulkButton, 20).build());
         bulkFooter.add(bulkStarButton);
-        bulkDeleteButton = addRenderableWidget(Button.builder(Component.empty(), button -> quickDelete(grid.checkedShots()))
+        bulkAlbumButton = addRenderableWidget(Button.builder(Component.translatable(PREFIX + "addToAlbum"), button -> openAlbums(grid.checkedShots()))
                 .bounds(bulkLeft + 2 * (bulkButton + gap), footerY, bulkButton, 20).build());
+        bulkFooter.add(bulkAlbumButton);
+        bulkDeleteButton = addRenderableWidget(Button.builder(Component.empty(), button -> quickDelete(grid.checkedShots()))
+                .bounds(bulkLeft + 3 * (bulkButton + gap), footerY, bulkButton, 20).build());
         bulkFooter.add(bulkDeleteButton);
         bulkFooter.add(addRenderableWidget(Button.builder(Component.translatable("gui.cancel"), button -> grid.clearChecked())
-                .bounds(bulkLeft + 3 * (bulkButton + gap), footerY, bulkButton, 20).build()));
+                .bounds(bulkLeft + 4 * (bulkButton + gap), footerY, bulkButton, 20).build()));
 
         // Bottom left, across from the count; only there while something can be brought back
         undoButton = addRenderableWidget(Button.builder(Component.empty(), button -> undoDelete())
@@ -205,7 +213,9 @@ public class GalleryScreen extends Screen {
         }
         long now = System.currentTimeMillis();
         visibleShots = allShots.stream().filter(shot -> filter.matches(shot, now)).toList();
-        Component empty = Component.translatable(allShots.isEmpty() ? PREFIX + "empty" : PREFIX + "noMatch");
+        Component empty = Component.translatable(allShots.isEmpty() ? PREFIX + "empty"
+                : filter.album() != null && allShots.stream().noneMatch(shot -> shot.inAlbum(filter.album())) ? PREFIX + "albumEmpty"
+                : PREFIX + "noMatch");
         grid.setShots(visibleShots, empty);
     }
 
@@ -314,6 +324,18 @@ public class GalleryScreen extends Screen {
         return bulkDeleteButton;
     }
 
+    public Button albumsButton() {
+        return albumsButton;
+    }
+
+    public Button bulkAlbumButton() {
+        return bulkAlbumButton;
+    }
+
+    public ShotFilter filter() {
+        return filter;
+    }
+
     public Button bulkStarButton() {
         return bulkStarButton;
     }
@@ -331,6 +353,24 @@ public class GalleryScreen extends Screen {
             reload();
             // A cropped-in-place screenshot keeps its name, so drop thumbnails that may show old pixels
             thumbnails.close();
+        }
+        minecraft.gui.setScreen(this);
+    }
+
+    private void openAlbums(List<Shot> adding) {
+        if (allShots == null) {
+            return;
+        }
+        keepTextures = true;
+        minecraft.gui.setScreen(new AlbumScreen(this, allShots, adding, filter.album()));
+    }
+
+    /** Called by the album screen when it closes, with the album to show (null for all screenshots). */
+    void returnFromAlbums(String album, boolean changed) {
+        filter = filter.withAlbum(album);
+        if (changed) {
+            allShots = null;
+            reload();
         }
         minecraft.gui.setScreen(this);
     }
@@ -363,7 +403,8 @@ public class GalleryScreen extends Screen {
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
         boolean checking = grid != null && grid.isChecking();
         // While checking, the title says how many, like the selection bar of a photo app
-        Component heading = checking ? Component.translatable(PREFIX + "checked", grid.checkedShots().size()) : title;
+        Component heading = checking ? Component.translatable(PREFIX + "checked", grid.checkedShots().size())
+                : filter.album() != null ? Component.translatable(PREFIX + "inAlbum", title, filter.album()) : title;
         graphics.centeredText(font, heading, width / 2, 11, 0xFFFFFFFF);
         if (allShots != null && !checking) {
             Component count = Component.translatable(PREFIX + "count", visibleShots.size(), allShots.size());

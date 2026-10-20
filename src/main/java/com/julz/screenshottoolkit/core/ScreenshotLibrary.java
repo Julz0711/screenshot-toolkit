@@ -259,6 +259,148 @@ public class ScreenshotLibrary {
         return removed;
     }
 
+    // ---- Albums ----
+    // A screenshot's albums live in its sidecar, so the image files never move. .meta/albums.json
+    // keeps the album names too, so an album exists before anything is in it and keeps its order.
+
+    /** Longest album name. */
+    public static final int MAX_ALBUM_LENGTH = 40;
+
+    private Path albumsFile() {
+        return metaDirectory().resolve("albums.json");
+    }
+
+    private List<String> readAlbumRegistry() {
+        Path file = albumsFile();
+        if (!Files.isRegularFile(file)) {
+            return new ArrayList<>();
+        }
+        try (Reader reader = Files.newBufferedReader(file)) {
+            String[] names = GSON.fromJson(reader, String[].class);
+            return names == null ? new ArrayList<>() : new ArrayList<>(List.of(names));
+        } catch (IOException | JsonParseException e) {
+            return new ArrayList<>();
+        }
+    }
+
+    private void writeAlbumRegistry(List<String> names) throws IOException {
+        Files.createDirectories(metaDirectory());
+        Path file = albumsFile();
+        Path temp = file.resolveSibling(file.getFileName() + ".tmp");
+        try (Writer writer = Files.newBufferedWriter(temp)) {
+            GSON.toJson(names, writer);
+        }
+        Files.move(temp, file, StandardCopyOption.REPLACE_EXISTING);
+    }
+
+    /** Every album, sorted by name: the saved ones and any a sidecar mentions. */
+    public List<String> albums(List<Shot> shots) {
+        TreeSet<String> names = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        names.addAll(readAlbumRegistry());
+        for (Shot shot : shots) {
+            names.addAll(shot.albums());
+        }
+        return new ArrayList<>(names);
+    }
+
+    /** Trims a typed album name and limits its length; "" when nothing is left. */
+    public static String cleanAlbumName(String typed) {
+        String name = typed.strip().replaceAll("\\p{Cntrl}", "");
+        return name.length() > MAX_ALBUM_LENGTH ? name.substring(0, MAX_ALBUM_LENGTH).strip() : name;
+    }
+
+    /**
+     * Saves a new, empty album and returns its cleaned name. Throws IllegalArgumentException when
+     * the name is empty and FileAlreadyExistsException when an album has it already, in any case.
+     */
+    public String createAlbum(String typed, List<Shot> shots) throws IOException {
+        String name = cleanAlbumName(typed);
+        if (name.isEmpty()) {
+            throw new IllegalArgumentException("Empty album name");
+        }
+        if (albums(shots).stream().anyMatch(existing -> existing.equalsIgnoreCase(name))) {
+            throw new FileAlreadyExistsException(name);
+        }
+        List<String> registry = readAlbumRegistry();
+        registry.add(name);
+        writeAlbumRegistry(registry);
+        return name;
+    }
+
+    /** Adds a screenshot to an album or takes it out. Returns the new metadata. */
+    public ShotMetadata setInAlbum(Path image, String album, boolean in) throws IOException {
+        ShotMetadata metadata = readMetadata(image);
+        if (metadata == null) {
+            metadata = new ShotMetadata();
+        }
+        List<String> albums = metadata.albums == null ? new ArrayList<>() : new ArrayList<>(metadata.albums);
+        albums.removeIf(name -> name.equalsIgnoreCase(album));
+        if (in) {
+            albums.add(album);
+        }
+        metadata.albums = albums.isEmpty() ? null : albums;
+        writeMetadata(image, metadata);
+        return metadata;
+    }
+
+    /**
+     * Renames an album everywhere, including screenshots in the trash. Returns the cleaned name.
+     * Throws like {@link #createAlbum} when the new name is empty or taken by another album.
+     */
+    public String renameAlbum(String album, String typed, List<Shot> shots) throws IOException {
+        String name = cleanAlbumName(typed);
+        if (name.isEmpty()) {
+            throw new IllegalArgumentException("Empty album name");
+        }
+        if (!name.equalsIgnoreCase(album) && albums(shots).stream().anyMatch(existing -> existing.equalsIgnoreCase(name))) {
+            throw new FileAlreadyExistsException(name);
+        }
+        replaceAlbum(album, name, shots);
+        return name;
+    }
+
+    /** Removes an album. Its screenshots stay; they are only no longer in it. */
+    public void deleteAlbum(String album, List<Shot> shots) throws IOException {
+        replaceAlbum(album, null, shots);
+    }
+
+    private void replaceAlbum(String album, String replacement, List<Shot> shots) throws IOException {
+        List<String> registry = readAlbumRegistry();
+        int at = -1;
+        for (int i = 0; i < registry.size(); i++) {
+            if (registry.get(i).equalsIgnoreCase(album)) {
+                at = i;
+            }
+        }
+        registry.removeIf(name -> name.equalsIgnoreCase(album));
+        if (replacement != null) {
+            registry.add(at >= 0 ? Math.min(at, registry.size()) : registry.size(), replacement);
+        }
+        writeAlbumRegistry(registry);
+        for (Shot shot : shots) {
+            if (shot.inAlbum(album)) {
+                setInAlbum(shot.file(), album, false);
+                if (replacement != null) {
+                    setInAlbum(shot.file(), replacement, true);
+                }
+            }
+        }
+        // Trashed screenshots come back in the album under its new name, or in none
+        for (Shot shot : listTrash()) {
+            if (shot.inAlbum(album)) {
+                ShotMetadata metadata = shot.metadata();
+                metadata.albums.removeIf(name -> name.equalsIgnoreCase(album));
+                if (replacement != null) {
+                    metadata.albums.add(replacement);
+                }
+                if (metadata.albums.isEmpty()) {
+                    metadata.albums = null;
+                }
+                writeJson(trashSidecar(shot.file()), metadata);
+            }
+        }
+    }
+
     /** Longest name, without the extension, that rename accepts. */
     public static final int MAX_NAME_LENGTH = 100;
 

@@ -31,6 +31,14 @@ public record Shot(Path file, long lastModified, long size, ShotMetadata metadat
         return metadata != null && metadata.takenAt != null ? metadata.takenAt : lastModified;
     }
 
+    public boolean inAlbum(String album) {
+        return metadata != null && metadata.inAlbum(album);
+    }
+
+    public java.util.List<String> albums() {
+        return metadata != null && metadata.albums != null ? metadata.albums : java.util.List.of();
+    }
+
     public String world() {
         return metadata != null ? metadata.world : null;
     }
