@@ -46,6 +46,9 @@ public class ShotScreen extends Screen {
     private int[] cropStart;
     private int[] cropEnd;
 
+    private int lastMouseX;
+    private int lastMouseY;
+
     private Button favoriteButton;
     private Button teleportButton;
     private Button cropButton;
@@ -319,6 +322,8 @@ public class ShotScreen extends Screen {
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
+        lastMouseX = mouseX;
+        lastMouseY = mouseY;
         images.upload();
         Shot shot = shot();
         graphics.centeredText(font, cropping ? Component.translatable(PREFIX + "cropHint") : Component.literal(shot.name()),
@@ -414,6 +419,11 @@ public class ShotScreen extends Screen {
 
     public Path currentFile() {
         return shot().file();
+    }
+
+    /** Where the screen last saw the mouse, in GUI pixels. */
+    public int[] lastMouse() {
+        return new int[]{lastMouseX, lastMouseY};
     }
 
     public boolean isCropping() {

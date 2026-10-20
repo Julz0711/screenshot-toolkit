@@ -110,11 +110,11 @@ public class ScreenshotToolkitClientGameTest implements FabricClientGameTest {
     /** Crops the open screenshot the way a player does: Crop, drag over the image, Save Crop. */
     private void testCropWithMouse(ClientGameTestContext context, ScreenshotLibrary library, Path source) {
         context.waitFor(client -> ((ShotScreen) client.gui.screen()).imageBounds() != null);
-        clickButton(context, screen -> screen.cropButton());
+        double scale = cursorScale(context);
+        clickButton(context, scale, screen -> screen.cropButton());
         boolean cropping = context.computeOnClient(client -> ((ShotScreen) client.gui.screen()).isCropping());
         assertTrue(cropping, "clicking Crop starts cropping");
         int[] area = context.computeOnClient(client -> ((ShotScreen) client.gui.screen()).imageBounds());
-        int scale = context.computeOnClient(client -> client.getWindow().getGuiScale());
         TestInput input = context.getInput();
         input.setCursorPos((area[0] + area[2] * 0.25) * scale, (area[1] + area[3] * 0.25) * scale);
         context.waitTick();
@@ -132,7 +132,7 @@ public class ScreenshotToolkitClientGameTest implements FabricClientGameTest {
         boolean saveActive = context.computeOnClient(client -> ((ShotScreen) client.gui.screen()).cropButton().active);
         assertTrue(saveActive, "Save Crop is enabled after selecting " + Arrays.toString(selection));
 
-        clickButton(context, screen -> screen.cropButton());
+        clickButton(context, scale, screen -> screen.cropButton());
         Path cropped = library.directory().resolve("2026-01-01_10.00.00_crop.png");
         boolean stillCropping = context.computeOnClient(client -> ((ShotScreen) client.gui.screen()).isCropping());
         assertTrue(!stillCropping, "clicking Save Crop leaves crop mode");
@@ -153,16 +153,28 @@ public class ScreenshotToolkitClientGameTest implements FabricClientGameTest {
         }
     }
 
-    private static void clickButton(ClientGameTestContext context, Function<ShotScreen, Button> button) {
+    /** Cursor units per GUI pixel, measured by moving the cursor and asking the screen where it is. */
+    private static double cursorScale(ClientGameTestContext context) {
+        context.getInput().setCursorPos(800, 400);
+        context.waitTicks(2);
+        int[] seen = context.computeOnClient(client -> ((ShotScreen) client.gui.screen()).lastMouse());
+        int guiScale = context.computeOnClient(client -> client.getWindow().getGuiScale());
+        assertTrue(seen[0] > 0, "the screen sees the cursor; at " + Arrays.toString(seen) + ", GUI scale " + guiScale);
+        return 800.0 / seen[0];
+    }
+
+    private static void clickButton(ClientGameTestContext context, double scale, Function<ShotScreen, Button> button) {
         int[] center = context.computeOnClient(client -> {
             Button b = button.apply((ShotScreen) client.gui.screen());
-            int scale = client.getWindow().getGuiScale();
-            return new int[]{(b.getX() + b.getWidth() / 2) * scale, (b.getY() + b.getHeight() / 2) * scale};
+            return new int[]{b.getX() + b.getWidth() / 2, b.getY() + b.getHeight() / 2};
         });
-        context.getInput().setCursorPos(center[0], center[1]);
-        context.waitTick();
+        context.getInput().setCursorPos(center[0] * scale, center[1] * scale);
+        context.waitTicks(2);
+        int[] seen = context.computeOnClient(client -> ((ShotScreen) client.gui.screen()).lastMouse());
+        assertTrue(Math.abs(seen[0] - center[0]) <= 2 && Math.abs(seen[1] - center[1]) <= 2,
+                "cursor on the button at " + Arrays.toString(center) + ", screen sees " + Arrays.toString(seen) + ", scale " + scale);
         context.getInput().pressMouse(0);
-        context.waitTick();
+        context.waitTicks(2);
     }
 
     private void testCrop(ScreenshotLibrary library) {
