@@ -137,6 +137,8 @@ public class ScreenshotToolkitClientGameTest implements FabricClientGameTest {
         int[] corner = context.computeOnClient(client -> {
             GalleryScreen gallery = (GalleryScreen) client.gui.screen();
             int index = gallery.visibleShots().stream().map(Shot::file).toList().indexOf(blue);
+            // Selecting green scrolled the grid; bring blue's row back into view
+            gallery.grid().select(gallery.visibleShots().get(index));
             int[] cell = gallery.grid().cellPosition(index);
             return new int[]{cell[0] + 7, cell[1] + 7};
         });
