@@ -6,6 +6,7 @@ import com.julz.screenshottoolkit.client.GalleryScreen;
 import com.julz.screenshottoolkit.client.RenameScreen;
 import com.julz.screenshottoolkit.client.ScreenshotToolkitClient;
 import com.julz.screenshottoolkit.client.ScreenshotToolkitConfigScreen;
+import com.julz.screenshottoolkit.client.ShotGrid;
 import com.julz.screenshottoolkit.client.ShotScreen;
 import com.julz.screenshottoolkit.client.Thumbnails;
 import com.julz.screenshottoolkit.config.ModConfig;
@@ -142,9 +143,19 @@ public class ScreenshotToolkitClientGameTest implements FabricClientGameTest {
         context.getInput().setCursorPos(corner[0] * scale, corner[1] * scale);
         context.waitTicks(2);
         context.takeScreenshot("screenshot-toolkit-gallery-delete-hover");
+        String before = context.computeOnClient(client -> {
+            GalleryScreen gallery = (GalleryScreen) client.gui.screen();
+            ShotGrid grid = gallery.grid();
+            return "corner " + Arrays.toString(corner) + ", scale " + scale + ", grid sees " + Arrays.toString(grid.lastMouse())
+                    + ", grid " + grid.getX() + "," + grid.getY() + " " + grid.getWidth() + "x" + grid.getHeight()
+                    + ", shots " + gallery.visibleShots().stream().map(shot -> shot.file().getFileName().toString()).toList()
+                    + ", loaded " + gallery.isLoaded();
+        });
         context.getInput().pressMouse(InputConstants.MOUSE_BUTTON_LEFT);
         context.waitTick();
-        assertTrue(!Files.exists(blue), "the corner button moves the screenshot to the trash");
+        String after = context.computeOnClient(client -> client.gui.screen().getClass().getSimpleName()
+                + ", green " + Files.exists(green));
+        assertTrue(!Files.exists(blue), "the corner button moves the screenshot to the trash; " + before + "; after: " + after);
         boolean stillGallery = context.computeOnClient(client -> client.gui.screen() instanceof GalleryScreen);
         assertTrue(stillGallery, "deleting does not open the viewer");
         clickGalleryUndo(context, scale);

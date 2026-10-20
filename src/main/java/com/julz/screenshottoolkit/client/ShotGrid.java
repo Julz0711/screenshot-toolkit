@@ -40,6 +40,8 @@ public class ShotGrid extends AbstractWidget {
     private Component emptyMessage = Component.empty();
     private int selected = -1;
     private double scroll;
+    private int lastMouseX = -1;
+    private int lastMouseY = -1;
 
     public ShotGrid(int x, int y, int width, int height, ShotTextures textures, Consumer<Shot> onOpen, Consumer<Shot> onDelete) {
         super(x, y, width, height, Component.translatable("screenshot-toolkit.gallery.title"));
@@ -112,6 +114,8 @@ public class ShotGrid extends AbstractWidget {
     @Override
     protected void extractWidgetRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         textures.upload();
+        lastMouseX = mouseX;
+        lastMouseY = mouseY;
         Font font = Minecraft.getInstance().font;
         if (shots.isEmpty()) {
             graphics.centeredText(font, emptyMessage, getX() + getWidth() / 2, getY() + getHeight() / 2 - 4, 0xFFA0A0A0);
@@ -186,6 +190,11 @@ public class ShotGrid extends AbstractWidget {
         int column = index % columns();
         int row = index / columns();
         return new int[]{left() + column * CELL_WIDTH, getY() + PADDING + row * CELL_HEIGHT - (int) scroll};
+    }
+
+    /** The cursor as the grid last saw it, for tests. */
+    public int[] lastMouse() {
+        return new int[]{lastMouseX, lastMouseY};
     }
 
     /** Draws the texture as large as fits in the box, keeping its shape, centered. */
