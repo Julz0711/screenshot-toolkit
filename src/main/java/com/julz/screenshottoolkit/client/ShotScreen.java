@@ -260,7 +260,12 @@ public class ShotScreen extends Screen {
             updateButtons();
             return true;
         }
-        return super.mouseClicked(event, doubleClick);
+        boolean over = cropButton.isMouseOver(event.x(), event.y());
+        boolean activeNow = cropButton.isActive();
+        boolean handled = super.mouseClicked(event, doubleClick);
+        ScreenshotToolkitClient.LOGGER.info("DEBUG crop over {} active {} handled {} presses {} focused {} dragging {}",
+                over, activeNow, handled, cropPresses, getFocused(), isDragging());
+        return handled;
     }
 
     @Override
