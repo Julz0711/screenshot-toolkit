@@ -249,6 +249,9 @@ public class ShotScreen extends Screen {
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        ScreenshotToolkitClient.LOGGER.info("DEBUG click {} at {},{} child {} crop button {},{} {}x{} active {} visible {}",
+                event.button(), event.x(), event.y(), getChildAt(event.x(), event.y()).orElse(null),
+                cropButton.getX(), cropButton.getY(), cropButton.getWidth(), cropButton.getHeight(), cropButton.active, cropButton.visible);
         // The image never overlaps a button, so a click on it always starts a selection
         if (cropping && event.button() == 0 && overImage(event.x(), event.y())) {
             cropStart = toImage(event.x(), event.y());
