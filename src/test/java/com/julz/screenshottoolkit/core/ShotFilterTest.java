@@ -53,4 +53,11 @@ class ShotFilterTest {
         assertTrue(filter.matches(shot("a.png", "My Castle", false, 0), NOW));
         assertFalse(filter.matches(shot("a.png", "Farm", false, 0), NOW));
     }
+
+    @Test
+    void customNameOnlyForNamesThePlayerGave() {
+        assertNull(new Shot(java.nio.file.Path.of("2026-10-20_12.36.34.png"), 0, 0, null).customName());
+        assertNull(new Shot(java.nio.file.Path.of("2026-10-20_12.36.34_2_crop_1.png"), 0, 0, null).customName());
+        assertEquals("Mountain base", new Shot(java.nio.file.Path.of("Mountain base.png"), 0, 0, null).customName());
+    }
 }

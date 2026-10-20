@@ -18,7 +18,8 @@ without leaving the game.
 - **Clean-shot key** (F6): hides the HUD and hand for one frame, takes the screenshot and brings them back.
 - **Copy /tp**: copies a command that puts you back where a screenshot was taken, in the right dimension and
   facing the same way (needs cheats or operator rights, like any `/tp`).
-- **Crop**: drag over a screenshot in the viewer; the crop is saved as a new file and the original is kept.
+- **Crop**: drag over a screenshot in the viewer, then save the crop as a new image or replace the original
+  (the original then stays in the trash, like a deleted screenshot).
 - **Rename**: give a screenshot a name of your own; its location details and thumbnail move with it.
 - **Safe delete**: deleting asks first and moves the screenshot to `screenshots/.trash`, where it stays for 7 days.
 

@@ -1,6 +1,7 @@
 package com.julz.screenshottoolkit.test;
 
 import com.julz.screenshottoolkit.client.Crop;
+import com.julz.screenshottoolkit.client.CropChoiceScreen;
 import com.julz.screenshottoolkit.client.GalleryScreen;
 import com.julz.screenshottoolkit.client.RenameScreen;
 import com.julz.screenshottoolkit.client.ScreenshotToolkitClient;
@@ -109,43 +110,27 @@ public class ScreenshotToolkitClientGameTest implements FabricClientGameTest {
         }
     }
 
-    /** Crops the open screenshot the way a player does: Crop, drag over the image, Save Crop. */
+    /** Crops, renames and crops again the way a player does, with the mouse and the keyboard. */
     private void testCropWithMouse(ClientGameTestContext context, ScreenshotLibrary library, Path source) {
         context.waitFor(client -> ((ShotScreen) client.gui.screen()).imageBounds() != null);
         double scale = cursorScale(context);
+
+        // Crop to a new image
         clickButton(context, scale, screen -> screen.cropButton());
         boolean cropping = context.computeOnClient(client -> ((ShotScreen) client.gui.screen()).isCropping());
         assertTrue(cropping, "clicking Crop starts cropping");
-        int[] area = context.computeOnClient(client -> ((ShotScreen) client.gui.screen()).imageBounds());
-        TestInput input = context.getInput();
-        input.setCursorPos((area[0] + area[2] * 0.25) * scale, (area[1] + area[3] * 0.25) * scale);
-        context.waitTick();
-        input.holdMouse(InputConstants.MOUSE_BUTTON_LEFT);
-        context.waitTick();
-        for (int step = 1; step <= 5; step++) {
-            input.moveCursor(area[2] * 0.1 * scale, area[3] * 0.1 * scale);
-            context.waitTick();
-        }
-        input.releaseMouse(InputConstants.MOUSE_BUTTON_LEFT);
-        context.waitTick();
+        dragOverImage(context, scale);
         context.takeScreenshot("screenshot-toolkit-crop-selection");
-        int[] selection = context.computeOnClient(client -> ((ShotScreen) client.gui.screen()).cropSelection());
-        assertTrue(selection != null, "dragging over the image selects an area, image at " + Arrays.toString(area));
-        boolean saveActive = context.computeOnClient(client -> ((ShotScreen) client.gui.screen()).cropButton().active);
-        assertTrue(saveActive, "Save Crop is enabled after selecting " + Arrays.toString(selection));
-
         clickButton(context, scale, screen -> screen.cropButton());
+        context.waitForScreen(CropChoiceScreen.class);
+        context.takeScreenshot("screenshot-toolkit-crop-choice");
+        clickChoice(context, scale, CropChoiceScreen::newButton);
+        context.waitForScreen(ShotScreen.class);
         Path cropped = library.directory().resolve("2026-01-01_10.00.00_crop.png");
-        boolean stillCropping = context.computeOnClient(client -> ((ShotScreen) client.gui.screen()).isCropping());
-        assertTrue(!stillCropping, "clicking Save Crop leaves crop mode");
         context.waitFor(client -> Files.exists(cropped), 20);
-        try (NativeImage image = Thumbnails.read(cropped)) {
-            // Half of 320x180, give or take the rounding of screen pixels to image pixels
-            assertTrue(Math.abs(image.getWidth() - 160) <= 8, "cropped width " + image.getWidth());
-            assertTrue(Math.abs(image.getHeight() - 90) <= 8, "cropped height " + image.getHeight());
-        } catch (IOException e) {
-            throw new AssertionError(e);
-        }
+        // Half of 320x180, give or take the rounding of screen pixels to image pixels
+        assertSize(cropped, 160, 90);
+        assertTrue(Files.exists(source), "the original is kept");
         Path shown = context.computeOnClient(client -> ((ShotScreen) client.gui.screen()).currentFile());
         assertEquals(cropped, shown, "viewer shows the cropped copy");
 
@@ -161,10 +146,68 @@ public class ScreenshotToolkitClientGameTest implements FabricClientGameTest {
         assertTrue(!Files.exists(cropped), "old name is gone");
         Path shownAfterRename = context.computeOnClient(client -> ((ShotScreen) client.gui.screen()).currentFile());
         assertEquals(renamed, shownAfterRename, "viewer shows the renamed file");
+
+        // Crop it again, this time replacing it
+        context.waitFor(client -> ((ShotScreen) client.gui.screen()).imageBounds() != null);
+        clickButton(context, scale, screen -> screen.cropButton());
+        dragOverImage(context, scale);
+        clickButton(context, scale, screen -> screen.cropButton());
+        context.waitForScreen(CropChoiceScreen.class);
+        clickChoice(context, scale, CropChoiceScreen::replaceButton);
+        context.waitForScreen(ShotScreen.class);
+        assertSize(renamed, 80, 45);
+        assertTrue(Files.exists(library.trashDirectory().resolve("Renamed shot.png")), "the replaced original is in the trash");
         context.waitTicks(5);
-        context.takeScreenshot("screenshot-toolkit-viewer-renamed");
+        context.takeScreenshot("screenshot-toolkit-viewer-replaced");
+
+        // Back in the gallery, the new name is listed and shown under its thumbnail
+        clickButton(context, scale, screen -> screen.backButton());
+        context.waitForScreen(GalleryScreen.class);
+        context.waitFor(client -> ((GalleryScreen) client.gui.screen()).isLoaded()
+                && ((GalleryScreen) client.gui.screen()).visibleShots().stream().anyMatch(shot -> shot.file().equals(renamed)));
+        context.waitFor(client -> Files.exists(Thumbnails.file(library, renamed)));
+        context.waitTicks(10);
+        context.takeScreenshot("screenshot-toolkit-gallery-renamed");
         try {
             library.moveToTrash(renamed);
+        } catch (IOException e) {
+            throw new AssertionError(e);
+        }
+    }
+
+    /** Drags from a quarter to three quarters of the image, then checks an area is selected. */
+    private static void dragOverImage(ClientGameTestContext context, double scale) {
+        int[] area = context.computeOnClient(client -> ((ShotScreen) client.gui.screen()).imageBounds());
+        TestInput input = context.getInput();
+        input.setCursorPos((area[0] + area[2] * 0.25) * scale, (area[1] + area[3] * 0.25) * scale);
+        context.waitTick();
+        input.holdMouse(InputConstants.MOUSE_BUTTON_LEFT);
+        context.waitTick();
+        for (int step = 1; step <= 5; step++) {
+            input.moveCursor(area[2] * 0.1 * scale, area[3] * 0.1 * scale);
+            context.waitTick();
+        }
+        input.releaseMouse(InputConstants.MOUSE_BUTTON_LEFT);
+        context.waitTick();
+        int[] selection = context.computeOnClient(client -> ((ShotScreen) client.gui.screen()).cropSelection());
+        assertTrue(selection != null, "dragging over the image selects an area, image at " + Arrays.toString(area));
+    }
+
+    private static void clickChoice(ClientGameTestContext context, double scale, Function<CropChoiceScreen, Button> button) {
+        int[] center = context.computeOnClient(client -> {
+            Button b = button.apply((CropChoiceScreen) client.gui.screen());
+            return new int[]{b.getX() + b.getWidth() / 2, b.getY() + b.getHeight() / 2};
+        });
+        context.getInput().setCursorPos(center[0] * scale, center[1] * scale);
+        context.waitTicks(2);
+        context.getInput().pressMouse(InputConstants.MOUSE_BUTTON_LEFT);
+        context.waitTicks(2);
+    }
+
+    private static void assertSize(Path file, int width, int height) {
+        try (NativeImage image = Thumbnails.read(file)) {
+            assertTrue(Math.abs(image.getWidth() - width) <= 8, file.getFileName() + " width " + image.getWidth() + ", expected about " + width);
+            assertTrue(Math.abs(image.getHeight() - height) <= 8, file.getFileName() + " height " + image.getHeight() + ", expected about " + height);
         } catch (IOException e) {
             throw new AssertionError(e);
         }

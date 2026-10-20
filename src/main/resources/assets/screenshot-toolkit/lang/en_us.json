@@ -41,6 +41,7 @@
 	"screenshot-toolkit.viewer.saveCrop": "Save Crop",
 	"screenshot-toolkit.viewer.cropHint": "Drag over the image to choose the area to keep, then press Save Crop",
 	"screenshot-toolkit.viewer.cropSaved": "Cropped copy saved",
+	"screenshot-toolkit.viewer.cropReplaced": "Screenshot cropped",
 	"screenshot-toolkit.viewer.open": "Open",
 	"screenshot-toolkit.viewer.delete": "Delete",
 	"screenshot-toolkit.viewer.back": "Back",
@@ -69,5 +70,11 @@
 	"screenshot-toolkit.rename.hint": "The date and details stay with the screenshot",
 	"screenshot-toolkit.rename.taken": "Another screenshot already has that name",
 	"screenshot-toolkit.rename.empty": "Type a name",
-	"screenshot-toolkit.rename.failed": "Could not rename the file"
+	"screenshot-toolkit.rename.failed": "Could not rename the file",
+
+	"screenshot-toolkit.cropChoice.title": "Save Crop",
+	"screenshot-toolkit.cropChoice.message": "Keep the original and save a new image, or replace it?",
+	"screenshot-toolkit.cropChoice.trash": "A replaced original stays in the trash for %s days.",
+	"screenshot-toolkit.cropChoice.new": "New Image",
+	"screenshot-toolkit.cropChoice.replace": "Replace"
 }

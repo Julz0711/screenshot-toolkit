@@ -150,7 +150,14 @@ public class ShotGrid extends AbstractWidget {
         if (shot.favorite()) {
             graphics.text(font, "★", x + THUMB_WIDTH - 10, y + 3, 0xFFFFD700, true);
         }
-        String label = DATE.format(Instant.ofEpochMilli(shot.takenAt()));
+        // A name the player gave wins over the date, which the viewer still shows
+        String label = shot.customName() != null ? shot.customName() : DATE.format(Instant.ofEpochMilli(shot.takenAt()));
+        if (font.width(Component.literal(label)) > THUMB_WIDTH - 2) {
+            while (label.length() > 1 && font.width(Component.literal(label + "...")) > THUMB_WIDTH - 2) {
+                label = label.substring(0, label.length() - 1);
+            }
+            label += "...";
+        }
         graphics.text(font, label, x + 1, y + THUMB_HEIGHT + 3, hovered || selected ? 0xFFFFFFFF : 0xFFA0A0A0, false);
         if (selected) {
             graphics.outline(x - 2, y - 2, THUMB_WIDTH + 4, THUMB_HEIGHT + 4, 0xFFFFFF00);

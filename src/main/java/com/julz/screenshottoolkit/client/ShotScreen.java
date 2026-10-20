@@ -335,9 +335,13 @@ public class ShotScreen extends Screen {
     private void saveCrop() {
         int[] rect = cropRect();
         if (rect == null) {
-            ScreenshotToolkitClient.LOGGER.debug("Save Crop pressed without a selection");
             return;
         }
+        minecraft.gui.setScreen(new CropChoiceScreen(this, ScreenshotToolkitClient.config().trashDays,
+                () -> saveCropAsNew(rect), () -> replaceWithCrop(rect)));
+    }
+
+    private void saveCropAsNew(int[] rect) {
         Shot shot = shot();
         try {
             Path cropped = Crop.save(library, shot.file(), rect[0], rect[1], rect[2], rect[3]);
@@ -351,6 +355,25 @@ public class ShotScreen extends Screen {
         } catch (IOException e) {
             ScreenshotToolkitClient.LOGGER.warn("Could not crop {}", shot.file(), e);
         }
+        endCrop();
+    }
+
+    private void replaceWithCrop(int[] rect) {
+        Shot shot = shot();
+        try {
+            Crop.replace(library, shot.file(), rect[0], rect[1], rect[2], rect[3]);
+            // Load the cropped pixels instead of the cached original
+            images.forget(shot.file());
+            changed = true;
+            SystemToast.addOrUpdate(minecraft.gui.toastManager(), SystemToast.SystemToastId.PERIODIC_NOTIFICATION,
+                    Component.translatable(PREFIX + "cropReplaced"), Component.literal(shot.name()));
+        } catch (IOException e) {
+            ScreenshotToolkitClient.LOGGER.warn("Could not crop {}", shot.file(), e);
+        }
+        endCrop();
+    }
+
+    private void endCrop() {
         cropping = false;
         selecting = false;
         cropStart = cropEnd = null;
