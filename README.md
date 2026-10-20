@@ -18,7 +18,7 @@ without leaving the game.
   them, Space or Ctrl+A, then delete or star them together; Escape lets go. One Undo brings back a whole batch.
   Ctrl+scroll makes thumbnails bigger or smaller. Thumbnails load as they scroll into view, so big folders stay fast.
 - **Albums**: the Albums button lists your albums; pick one to show only its screenshots. Select screenshots and
-  press Album to put them in one (or take them out), or make a new album on the spot. A screenshot can be in several
+  press Add to Album to put them in one (or take them out), or make a new album on the spot. A screenshot can be in several
   albums. Albums are saved in the sidecar files, so the images never move and other tools still find them.
 - **Trash**: the Trash button in the gallery shows deleted screenshots with the days each has left. Restore them,
   delete them for good, or empty the trash.
