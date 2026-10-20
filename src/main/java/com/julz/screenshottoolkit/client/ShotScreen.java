@@ -184,7 +184,11 @@ public class ShotScreen extends Screen {
 
     // ---- Crop ----
 
+    private int cropPresses;
+
     private void cropPressed() {
+        cropPresses++;
+        ScreenshotToolkitClient.LOGGER.info("Crop button pressed (cropping: {})", cropping);
         if (cropping) {
             saveCrop();
         } else {
@@ -424,6 +428,10 @@ public class ShotScreen extends Screen {
     /** Where the screen last saw the mouse, in GUI pixels. */
     public int[] lastMouse() {
         return new int[]{lastMouseX, lastMouseY};
+    }
+
+    public int cropPresses() {
+        return cropPresses;
     }
 
     public boolean isCropping() {

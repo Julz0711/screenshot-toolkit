@@ -113,7 +113,8 @@ public class ScreenshotToolkitClientGameTest implements FabricClientGameTest {
         double scale = cursorScale(context);
         clickButton(context, scale, screen -> screen.cropButton());
         boolean cropping = context.computeOnClient(client -> ((ShotScreen) client.gui.screen()).isCropping());
-        assertTrue(cropping, "clicking Crop starts cropping");
+        int presses = context.computeOnClient(client -> ((ShotScreen) client.gui.screen()).cropPresses());
+        assertTrue(cropping, "clicking Crop starts cropping; the button fired " + presses + " times");
         int[] area = context.computeOnClient(client -> ((ShotScreen) client.gui.screen()).imageBounds());
         TestInput input = context.getInput();
         input.setCursorPos((area[0] + area[2] * 0.25) * scale, (area[1] + area[3] * 0.25) * scale);
