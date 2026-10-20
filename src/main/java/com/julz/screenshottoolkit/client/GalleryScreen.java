@@ -255,8 +255,9 @@ public class GalleryScreen extends Screen {
         }
     }
 
+    /** True once the list is in and no reload is still running. */
     public boolean isLoaded() {
-        return allShots != null;
+        return allShots != null && loading == null;
     }
 
     public List<Shot> visibleShots() {
