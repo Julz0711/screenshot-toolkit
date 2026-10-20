@@ -258,11 +258,16 @@ public class ScreenshotToolkitClientGameTest implements FabricClientGameTest {
         int[] points = context.computeOnClient(client -> {
             GalleryScreen gallery = (GalleryScreen) client.gui.screen();
             ShotGrid grid = gallery.grid();
-            grid.select(gallery.visibleShots().getFirst());
+            // Earlier screenshots of the test land in the folder too, so find the cells instead of assuming a layout
+            grid.select(shotFor(gallery, green));
+            grid.select(shotFor(gallery, blue));
             int[] from = grid.cellPosition(gallery.visibleShots().indexOf(shotFor(gallery, blue)));
             int[] to = grid.cellPosition(gallery.visibleShots().indexOf(shotFor(gallery, green)));
-            // Green's row may only be partly visible, so aim at the top of its thumbnail
-            return new int[]{from[0] + grid.thumbWidth() / 2, from[1] + grid.thumbHeight() / 2, to[0] + grid.thumbWidth() / 2, to[1] + 10};
+            // Either row may be only partly in view, so keep both ends of the box inside the grid
+            int top = grid.getY() + 4;
+            int bottom = grid.getBottom() - 4;
+            return new int[]{from[0] + grid.thumbWidth() / 2, Math.clamp(from[1] + grid.thumbHeight() / 2, top, bottom),
+                    to[0] + grid.thumbWidth() / 2, Math.clamp(to[1] + grid.thumbHeight() / 2, top, bottom)};
         });
         TestInput input = context.getInput();
         input.setCursorPos(points[0] * scale, points[1] * scale);
