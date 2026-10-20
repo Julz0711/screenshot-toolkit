@@ -260,6 +260,9 @@ public class ShotScreen extends Screen {
             updateButtons();
             return true;
         }
+        getChildAt(event.x(), event.y()).ifPresent(child -> ScreenshotToolkitClient.LOGGER.info(
+                "DEBUG child is crop button {} message {} children {}", child == cropButton,
+                child instanceof Button b ? b.getMessage().getString() : "?", children().size()));
         boolean over = cropButton.isMouseOver(event.x(), event.y());
         boolean activeNow = cropButton.isActive();
         boolean handled = super.mouseClicked(event, doubleClick);
