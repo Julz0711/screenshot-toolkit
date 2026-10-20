@@ -162,7 +162,9 @@ public class ScreenshotToolkitClientGameTest implements FabricClientGameTest {
         assertTrue(stillGallery, "deleting does not open the viewer");
         clickGalleryUndo(context, scale);
         context.waitFor(client -> Files.exists(blue) && ((GalleryScreen) client.gui.screen()).isLoaded());
-        context.waitFor(client -> Files.exists(Thumbnails.file(library, blue)));
+        boolean back = context.computeOnClient(client -> ((GalleryScreen) client.gui.screen()).visibleShots().stream()
+                .anyMatch(shot -> shot.file().equals(blue)));
+        assertTrue(back, "Undo puts the screenshot back in the grid");
     }
 
     private static void clickGalleryUndo(ClientGameTestContext context, int scale) {
