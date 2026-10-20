@@ -273,6 +273,9 @@ public class ScreenshotToolkitClientGameTest implements FabricClientGameTest {
             input.moveCursor((points[2] - points[0]) * scale / 5.0, (points[3] - points[1]) * scale / 5.0);
             context.waitTick();
         }
+        String during = context.computeOnClient(client -> client.gui.screen() instanceof GalleryScreen gallery
+                ? "pressing " + gallery.grid().isPressing() + ", grid sees " + Arrays.toString(gallery.grid().lastMouse())
+                + ", checked " + gallery.grid().checkedShots().size() : "screen " + client.gui.screen());
         context.takeScreenshot("screenshot-toolkit-gallery-drag-select");
         input.releaseMouse(InputConstants.MOUSE_BUTTON_LEFT);
         context.waitTick();
@@ -280,7 +283,8 @@ public class ScreenshotToolkitClientGameTest implements FabricClientGameTest {
                 ? gallery.grid().checkedShots().stream().map(shot -> shot.file().getFileName().toString()).toList().toString()
                 : "left the gallery for " + client.gui.screen());
         assertTrue(state.contains(green.getFileName().toString()) && state.contains(blue.getFileName().toString()),
-                "dragging a box checks the thumbnails it touches, got " + state);
+                "dragging a box checks the thumbnails it touches, got " + state + " from " + Arrays.toString(points)
+                        + "; while dragging: " + during);
         context.getInput().pressKey(InputConstants.KEY_ESCAPE);
         context.waitTick();
     }
