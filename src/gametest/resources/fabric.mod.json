@@ -1,0 +1,15 @@
+{
+	"schemaVersion": 1,
+	"id": "screenshot-toolkit-test",
+	"version": "1.0.0",
+	"name": "Screenshot Toolkit Tests",
+	"environment": "client",
+	"entrypoints": {
+		"fabric-client-gametest": [
+			"com.julz.screenshottoolkit.test.ScreenshotToolkitClientGameTest"
+		]
+	},
+	"depends": {
+		"screenshot-toolkit": "*"
+	}
+}
