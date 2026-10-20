@@ -17,10 +17,17 @@ import net.minecraft.util.Mth;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.nio.file.Path;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Consumer;
 
-/** A scrollable grid of thumbnails. Arrow keys move the selection, Enter opens it. */
+/**
+ * A scrollable grid of thumbnails. Arrow keys move the cursor, Enter opens it. Thumbnails can also be checked for bulk
+ * actions: the box in the corner, Ctrl+click, Shift+click for a range, Space, or Ctrl+A for all. While any are checked,
+ * a plain click checks instead of opening.
+ */
 public class ShotGrid extends AbstractWidget {
     public static final int THUMB_WIDTH = 128;
     public static final int THUMB_HEIGHT = 72;
@@ -34,8 +41,13 @@ public class ShotGrid extends AbstractWidget {
 
     private final ShotTextures textures;
     private static final int DELETE_SIZE = 11;
+    private static final int BOX_SIZE = 11;
     private final Consumer<Shot> onOpen;
-    private final Consumer<Shot> onDelete;
+    private final Consumer<List<Shot>> onDelete;
+    private final Runnable onCheckedChanged;
+    private final Set<Path> checked = new LinkedHashSet<>();
+    // Where a Shift+click range starts
+    private int anchor = -1;
     private List<Shot> shots = List.of();
     private Component emptyMessage = Component.empty();
     private int selected = -1;
@@ -43,11 +55,13 @@ public class ShotGrid extends AbstractWidget {
     private int lastMouseX = -1;
     private int lastMouseY = -1;
 
-    public ShotGrid(int x, int y, int width, int height, ShotTextures textures, Consumer<Shot> onOpen, Consumer<Shot> onDelete) {
+    public ShotGrid(int x, int y, int width, int height, ShotTextures textures, Consumer<Shot> onOpen,
+                    Consumer<List<Shot>> onDelete, Runnable onCheckedChanged) {
         super(x, y, width, height, Component.translatable("screenshot-toolkit.gallery.title"));
         this.textures = textures;
         this.onOpen = onOpen;
         this.onDelete = onDelete;
+        this.onCheckedChanged = onCheckedChanged;
     }
 
     public void setShots(List<Shot> shots, Component emptyMessage) {
@@ -61,6 +75,47 @@ public class ShotGrid extends AbstractWidget {
             selected = Math.min(shots.size() - 1, previousIndex);
         }
         setScroll(scroll);
+        // Hidden screenshots are not checked, so a bulk action never touches what the player can't see
+        if (checked.retainAll(shots.stream().map(Shot::file).toList())) {
+            onCheckedChanged.run();
+        }
+    }
+
+    /** The checked screenshots, in grid order. */
+    public List<Shot> checkedShots() {
+        return shots.stream().filter(shot -> checked.contains(shot.file())).toList();
+    }
+
+    public boolean isChecking() {
+        return !checked.isEmpty();
+    }
+
+    public void checkAll() {
+        shots.forEach(shot -> checked.add(shot.file()));
+        onCheckedChanged.run();
+    }
+
+    public void clearChecked() {
+        checked.clear();
+        anchor = -1;
+        onCheckedChanged.run();
+    }
+
+    private void toggleChecked(int index) {
+        Path file = shots.get(index).file();
+        if (!checked.remove(file)) {
+            checked.add(file);
+        }
+        anchor = index;
+        onCheckedChanged.run();
+    }
+
+    private void checkRange(int index) {
+        int from = anchor >= 0 && anchor < shots.size() ? anchor : index;
+        for (int i = Math.min(from, index); i <= Math.max(from, index); i++) {
+            checked.add(shots.get(i).file());
+        }
+        onCheckedChanged.run();
     }
 
     public Shot selectedShot() {
@@ -134,7 +189,8 @@ public class ShotGrid extends AbstractWidget {
                 }
                 int x = left() + column * CELL_WIDTH;
                 int y = getY() + PADDING + row * CELL_HEIGHT - (int) scroll;
-                drawCell(graphics, font, shots.get(index), x, y, index == hovered, index == selected && isFocused(), mouseX, mouseY);
+                drawCell(graphics, font, shots.get(index), x, y, index == hovered, index == selected && isFocused(),
+                        checked.contains(shots.get(index).file()), mouseX, mouseY);
             }
         }
         graphics.disableScissor();
@@ -146,7 +202,7 @@ public class ShotGrid extends AbstractWidget {
     }
 
     private void drawCell(GuiGraphicsExtractor graphics, Font font, Shot shot, int x, int y, boolean hovered, boolean selected,
-                          int mouseX, int mouseY) {
+                          boolean isChecked, int mouseX, int mouseY) {
         graphics.fill(x, y, x + THUMB_WIDTH, y + THUMB_HEIGHT, 0xFF101010);
         ShotTextures.Texture texture = textures.get(shot.file());
         if (texture != null) {
@@ -157,9 +213,22 @@ public class ShotGrid extends AbstractWidget {
             graphics.centeredText(font, status, x + THUMB_WIDTH / 2, y + THUMB_HEIGHT / 2 - 4, 0xFF808080);
         }
         if (shot.favorite()) {
-            graphics.text(font, "★", x + THUMB_WIDTH - 10, y + 3, 0xFFFFD700, true);
+            graphics.text(font, "★", x + THUMB_WIDTH - 10, y + THUMB_HEIGHT - 11, 0xFFFFD700, true);
         }
-        if (hovered) {
+        if (isChecked) {
+            graphics.fill(x, y, x + THUMB_WIDTH, y + THUMB_HEIGHT, 0x403070F0);
+        }
+        if (hovered || isChecking()) {
+            // Check box in the other corner; always shown while checking so it is clear what a click does
+            int boxX = x + THUMB_WIDTH - 2 - BOX_SIZE;
+            boolean overBox = inCheckBox(x, y, mouseX, mouseY);
+            graphics.fill(boxX, y + 2, boxX + BOX_SIZE, y + 2 + BOX_SIZE, isChecked ? 0xFF3070F0 : overBox ? 0xC0404040 : 0xB0000000);
+            graphics.outline(boxX, y + 2, BOX_SIZE, BOX_SIZE, isChecked || overBox ? 0xFFFFFFFF : 0xFFA0A0A0);
+            if (isChecked) {
+                graphics.centeredText(font, Component.literal("✔"), boxX + BOX_SIZE / 2 + 1, y + 4, 0xFFFFFFFF);
+            }
+        }
+        if (hovered && !isChecking()) {
             // Quick delete in the corner; it goes to the trash and the gallery offers Undo
             boolean overDelete = inDeleteBox(x, y, mouseX, mouseY);
             graphics.fill(x + 2, y + 2, x + 2 + DELETE_SIZE, y + 2 + DELETE_SIZE, overDelete ? 0xE0C03030 : 0xB0000000);
@@ -176,6 +245,8 @@ public class ShotGrid extends AbstractWidget {
         graphics.text(font, label, x + 1, y + THUMB_HEIGHT + 3, hovered || selected ? 0xFFFFFFFF : 0xFFA0A0A0, false);
         if (selected) {
             graphics.outline(x - 2, y - 2, THUMB_WIDTH + 4, THUMB_HEIGHT + 4, 0xFFFFFF00);
+        } else if (isChecked) {
+            graphics.outline(x - 1, y - 1, THUMB_WIDTH + 2, THUMB_HEIGHT + 2, 0xFF3070F0);
         } else if (hovered) {
             graphics.outline(x - 1, y - 1, THUMB_WIDTH + 2, THUMB_HEIGHT + 2, 0xFFFFFFFF);
         }
@@ -183,6 +254,11 @@ public class ShotGrid extends AbstractWidget {
 
     private static boolean inDeleteBox(int cellX, int cellY, double mouseX, double mouseY) {
         return mouseX >= cellX + 2 && mouseX < cellX + 2 + DELETE_SIZE && mouseY >= cellY + 2 && mouseY < cellY + 2 + DELETE_SIZE;
+    }
+
+    private static boolean inCheckBox(int cellX, int cellY, double mouseX, double mouseY) {
+        int boxX = cellX + THUMB_WIDTH - 2 - BOX_SIZE;
+        return mouseX >= boxX && mouseX < boxX + BOX_SIZE && mouseY >= cellY + 2 && mouseY < cellY + 2 + BOX_SIZE;
     }
 
     /** Where cell {@code index} starts on screen, for tests and the delete box. */
@@ -212,12 +288,18 @@ public class ShotGrid extends AbstractWidget {
         int index = indexAt(event.x(), event.y());
         if (index >= 0) {
             int[] cell = cellPosition(index);
-            if (inDeleteBox(cell[0], cell[1], event.x(), event.y())) {
-                onDelete.accept(shots.get(index));
-                return;
+            if (event.hasShiftDown()) {
+                selected = index;
+                checkRange(index);
+            } else if (inCheckBox(cell[0], cell[1], event.x(), event.y()) || event.hasControlDown() || isChecking()) {
+                selected = index;
+                toggleChecked(index);
+            } else if (inDeleteBox(cell[0], cell[1], event.x(), event.y())) {
+                onDelete.accept(List.of(shots.get(index)));
+            } else {
+                selected = index;
+                onOpen.accept(shots.get(index));
             }
-            selected = index;
-            onOpen.accept(shots.get(index));
         }
     }
 
@@ -244,11 +326,24 @@ public class ShotGrid extends AbstractWidget {
         }
         if (move != 0) {
             selected = selected < 0 ? 0 : Mth.clamp(selected + move, 0, shots.size() - 1);
+            if (event.hasShiftDown()) {
+                checkRange(selected);
+            } else {
+                anchor = selected;
+            }
             scrollToSelected();
             return true;
         }
-        if (event.key() == InputConstants.KEY_DELETE && selectedShot() != null) {
-            onDelete.accept(selectedShot());
+        if (event.isSelectAll()) {
+            checkAll();
+            return true;
+        }
+        if (event.key() == InputConstants.KEY_SPACE && selectedShot() != null) {
+            toggleChecked(selected);
+            return true;
+        }
+        if (event.key() == InputConstants.KEY_DELETE && (isChecking() || selectedShot() != null)) {
+            onDelete.accept(isChecking() ? checkedShots() : List.of(selectedShot()));
             return true;
         }
         if (event.isConfirmation() && selectedShot() != null) {

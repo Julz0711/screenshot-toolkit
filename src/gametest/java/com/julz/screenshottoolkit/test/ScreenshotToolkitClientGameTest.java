@@ -87,6 +87,7 @@ public class ScreenshotToolkitClientGameTest implements FabricClientGameTest {
         context.waitTicks(10);
         context.takeScreenshot("screenshot-toolkit-gallery");
         testQuickDelete(context, library);
+        testMultiDelete(context, library);
 
         // The viewer opens on the starred screenshot
         context.runOnClient(client -> {
@@ -165,6 +166,77 @@ public class ScreenshotToolkitClientGameTest implements FabricClientGameTest {
         boolean back = context.computeOnClient(client -> ((GalleryScreen) client.gui.screen()).visibleShots().stream()
                 .anyMatch(shot -> shot.file().equals(blue)));
         assertTrue(back, "Undo puts the screenshot back in the grid");
+    }
+
+    /** Checks thumbnails with the corner box, a plain click and Space, then deletes them together and undoes it. */
+    private void testMultiDelete(ClientGameTestContext context, ScreenshotLibrary library) {
+        Path green = library.directory().resolve("2026-01-02_10.00.00.png");
+        Path blue = library.directory().resolve("2026-01-03_10.00.00.png");
+        int scale = context.computeOnClient(client -> client.getWindow().getGuiScale());
+
+        // Space checks the thumbnail under the keyboard cursor; Escape lets go before it closes anything
+        context.runOnClient(client -> {
+            GalleryScreen gallery = (GalleryScreen) client.gui.screen();
+            gallery.grid().select(shotFor(gallery, green));
+            gallery.setFocused(gallery.grid());
+        });
+        context.getInput().pressKey(InputConstants.KEY_SPACE);
+        context.waitTick();
+        assertTrue(context.computeOnClient(client -> ((GalleryScreen) client.gui.screen()).grid().isChecking()), "Space checks a thumbnail");
+        context.getInput().pressKey(InputConstants.KEY_ESCAPE);
+        context.waitTick();
+        boolean cleared = context.computeOnClient(client -> client.gui.screen() instanceof GalleryScreen gallery && !gallery.grid().isChecking());
+        assertTrue(cleared, "Escape clears the checked thumbnails and keeps the gallery open");
+
+        // The check box on blue, then a plain click on green, which checks instead of opening
+        int[] box = context.computeOnClient(client -> {
+            GalleryScreen gallery = (GalleryScreen) client.gui.screen();
+            gallery.grid().select(shotFor(gallery, blue));
+            int[] cell = gallery.grid().cellPosition(gallery.visibleShots().indexOf(shotFor(gallery, blue)));
+            return new int[]{cell[0] + ShotGrid.THUMB_WIDTH - 8, cell[1] + 7};
+        });
+        clickAt(context, scale, box[0], box[1]);
+        int[] middle = context.computeOnClient(client -> {
+            GalleryScreen gallery = (GalleryScreen) client.gui.screen();
+            gallery.grid().select(shotFor(gallery, green));
+            int[] cell = gallery.grid().cellPosition(gallery.visibleShots().indexOf(shotFor(gallery, green)));
+            return new int[]{cell[0] + ShotGrid.THUMB_WIDTH / 2, cell[1] + ShotGrid.THUMB_HEIGHT / 2};
+        });
+        clickAt(context, scale, middle[0], middle[1]);
+        List<Path> checked = context.computeOnClient(client -> client.gui.screen() instanceof GalleryScreen gallery
+                ? gallery.grid().checkedShots().stream().map(Shot::file).toList() : List.of());
+        assertTrue(checked.size() == 2 && checked.contains(green) && checked.contains(blue),
+                "the box and a click while checking check both, got " + checked);
+        context.takeScreenshot("screenshot-toolkit-gallery-checked");
+
+        int[] delete = context.computeOnClient(client -> {
+            Button b = ((GalleryScreen) client.gui.screen()).bulkDeleteButton();
+            assertTrue(b.visible, "the footer offers bulk delete");
+            return new int[]{b.getX() + b.getWidth() / 2, b.getY() + b.getHeight() / 2};
+        });
+        clickAt(context, scale, delete[0], delete[1]);
+        assertTrue(!Files.exists(green) && !Files.exists(blue), "bulk delete moves both to the trash");
+        assertTrue(!context.computeOnClient(client -> ((GalleryScreen) client.gui.screen()).grid().isChecking()), "nothing is checked after deleting");
+
+        clickGalleryUndo(context, scale);
+        context.waitFor(client -> Files.exists(green) && Files.exists(blue) && ((GalleryScreen) client.gui.screen()).isLoaded());
+        boolean back = context.computeOnClient(client -> {
+            List<Path> files = ((GalleryScreen) client.gui.screen()).visibleShots().stream().map(Shot::file).toList();
+            return files.contains(green) && files.contains(blue);
+        });
+        assertTrue(back, "one Undo brings the whole batch back");
+    }
+
+    private static Shot shotFor(GalleryScreen gallery, Path file) {
+        return gallery.visibleShots().stream().filter(shot -> shot.file().equals(file)).findFirst()
+                .orElseThrow(() -> new AssertionError(file + " is not in the gallery"));
+    }
+
+    private static void clickAt(ClientGameTestContext context, int scale, int x, int y) {
+        context.getInput().setCursorPos(x * scale, y * scale);
+        context.waitTicks(2);
+        context.getInput().pressMouse(InputConstants.MOUSE_BUTTON_LEFT);
+        context.waitTicks(2);
     }
 
     private static void clickGalleryUndo(ClientGameTestContext context, int scale) {

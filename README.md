@@ -14,6 +14,8 @@ without leaving the game.
   screenshots, and filter by world or server and by date. Arrow keys and Enter work too.
   Delete a screenshot straight from the grid with the ✕ on a hovered thumbnail or the Delete key;
   it goes to the trash and Undo Delete brings it back.
+  Select several with the box in a thumbnail's corner, Ctrl+click, Shift+click for a range, Space or Ctrl+A, then
+  delete or star them together; Escape lets go. One Undo brings back a whole batch.
 - **Viewer**: click a thumbnail to see it full size with its world, dimension, coordinates and time.
   Copy it again, star it, rename it, open it in your image viewer, crop it, or delete it. Left and right arrows go to the
   previous and next screenshot.

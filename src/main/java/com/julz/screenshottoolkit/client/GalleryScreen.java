@@ -3,18 +3,25 @@ package com.julz.screenshottoolkit.client;
 import com.julz.screenshottoolkit.core.ScreenshotLibrary;
 import com.julz.screenshottoolkit.core.Shot;
 import com.julz.screenshottoolkit.core.ShotFilter;
+import com.julz.screenshottoolkit.core.ShotMetadata;
+import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.Blaze3D;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.CycleButton;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.KeyEvent;
 import net.minecraft.network.chat.Component;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 /** The in-game gallery: a grid of thumbnails with search and filters. */
@@ -35,8 +42,13 @@ public class GalleryScreen extends Screen {
 
     private ShotGrid grid;
     private Button undoButton;
-    /** Screenshots deleted from the grid, newest last: where each went in the trash and its old name. */
-    private final java.util.Deque<Deleted> deleted = new java.util.ArrayDeque<>();
+    // The footer while nothing is checked, and the bulk actions that replace it while something is
+    private final List<Button> normalFooter = new ArrayList<>();
+    private final List<Button> bulkFooter = new ArrayList<>();
+    private Button bulkStarButton;
+    private Button bulkDeleteButton;
+    /** Deletes from the grid, newest last; each is one click or key press, so Undo brings back a whole batch. */
+    private final Deque<List<Deleted>> deleted = new ArrayDeque<>();
 
     private record Deleted(Path trashed, String name, long lastModified) {
     }
@@ -103,21 +115,39 @@ public class GalleryScreen extends Screen {
             // Released when another screen took over without saying it would come back
             thumbnails = new ShotTextures(image -> Thumbnails.load(library, image));
         }
-        grid = addRenderableWidget(new ShotGrid(margin, gridTop, width - 2 * margin, footerY - 10 - gridTop, thumbnails, this::open, this::quickDelete));
+        grid = addRenderableWidget(new ShotGrid(margin, gridTop, width - 2 * margin, footerY - 10 - gridTop, thumbnails,
+                this::open, this::quickDelete, this::updateFooter));
 
         int footerWidth = Math.min(width - 2 * margin, 3 * 100 + 2 * gap);
         int footerButton = (footerWidth - 2 * gap) / 3;
         int footerLeft = (width - footerWidth) / 2;
-        addRenderableWidget(Button.builder(Component.translatable(PREFIX + "openFolder"), button -> openFolder())
-                .bounds(footerLeft, footerY, footerButton, 20).build());
-        addRenderableWidget(Button.builder(Component.translatable(PREFIX + "settings"),
+        normalFooter.clear();
+        normalFooter.add(addRenderableWidget(Button.builder(Component.translatable(PREFIX + "openFolder"), button -> openFolder())
+                .bounds(footerLeft, footerY, footerButton, 20).build()));
+        normalFooter.add(addRenderableWidget(Button.builder(Component.translatable(PREFIX + "settings"),
                         button -> {
                             keepTextures = true;
                             minecraft.gui.setScreen(new ScreenshotToolkitConfigScreen(this));
                         })
-                .bounds(footerLeft + footerButton + gap, footerY, footerButton, 20).build());
-        addRenderableWidget(Button.builder(Component.translatable("gui.done"), button -> onClose())
-                .bounds(footerLeft + 2 * (footerButton + gap), footerY, footerButton, 20).build());
+                .bounds(footerLeft + footerButton + gap, footerY, footerButton, 20).build()));
+        normalFooter.add(addRenderableWidget(Button.builder(Component.translatable("gui.done"), button -> onClose())
+                .bounds(footerLeft + 2 * (footerButton + gap), footerY, footerButton, 20).build()));
+
+        // Bulk actions take the whole footer row while screenshots are checked
+        int bulkWidth = Math.min(width - 2 * margin, 4 * 100 + 3 * gap);
+        int bulkButton = (bulkWidth - 3 * gap) / 4;
+        int bulkLeft = (width - bulkWidth) / 2;
+        bulkFooter.clear();
+        bulkFooter.add(addRenderableWidget(Button.builder(Component.translatable(PREFIX + "selectAll"), button -> grid.checkAll())
+                .bounds(bulkLeft, footerY, bulkButton, 20).build()));
+        bulkStarButton = addRenderableWidget(Button.builder(Component.empty(), button -> starChecked())
+                .bounds(bulkLeft + bulkButton + gap, footerY, bulkButton, 20).build());
+        bulkFooter.add(bulkStarButton);
+        bulkDeleteButton = addRenderableWidget(Button.builder(Component.empty(), button -> quickDelete(grid.checkedShots()))
+                .bounds(bulkLeft + 2 * (bulkButton + gap), footerY, bulkButton, 20).build());
+        bulkFooter.add(bulkDeleteButton);
+        bulkFooter.add(addRenderableWidget(Button.builder(Component.translatable("gui.cancel"), button -> grid.clearChecked())
+                .bounds(bulkLeft + 3 * (bulkButton + gap), footerY, bulkButton, 20).build()));
 
         // Bottom left, across from the count; only there while something can be brought back
         undoButton = addRenderableWidget(Button.builder(Component.empty(), button -> undoDelete())
@@ -125,6 +155,7 @@ public class GalleryScreen extends Screen {
         updateUndoButton();
 
         refreshGrid();
+        updateFooter();
         if (reselect != null && allShots != null) {
             visibleShots.stream().filter(shot -> shot.file().equals(reselect.file())).findFirst().ifPresent(grid::select);
             reselect = null;
@@ -170,40 +201,88 @@ public class GalleryScreen extends Screen {
         grid.setShots(visibleShots, empty);
     }
 
-    /** Moves a screenshot to the trash without asking; Undo brings it back. */
-    private void quickDelete(Shot shot) {
-        try {
-            Path trashed = library.moveToTrash(shot.file());
-            deleted.addLast(new Deleted(trashed, shot.name(), shot.lastModified()));
-        } catch (IOException e) {
-            ScreenshotToolkitClient.LOGGER.warn("Could not move {} to the trash", shot.file(), e);
+    /** Moves screenshots to the trash without asking; Undo brings them back together. */
+    private void quickDelete(List<Shot> shots) {
+        List<Deleted> batch = new ArrayList<>();
+        List<Path> gone = new ArrayList<>();
+        for (Shot shot : shots) {
+            try {
+                Path trashed = library.moveToTrash(shot.file());
+                batch.add(new Deleted(trashed, shot.name(), shot.lastModified()));
+                gone.add(shot.file());
+            } catch (IOException e) {
+                ScreenshotToolkitClient.LOGGER.warn("Could not move {} to the trash", shot.file(), e);
+            }
+        }
+        if (batch.isEmpty()) {
             return;
         }
-        allShots = allShots.stream().filter(other -> !other.file().equals(shot.file())).toList();
+        deleted.addLast(batch);
+        allShots = allShots.stream().filter(other -> !gone.contains(other.file())).toList();
+        grid.clearChecked();
         refreshGrid();
         updateUndoButton();
     }
 
     private void undoDelete() {
-        Deleted last = deleted.pollLast();
-        if (last == null) {
+        List<Deleted> batch = deleted.pollLast();
+        if (batch == null) {
             return;
         }
-        try {
-            Path restored = library.restoreFromTrash(last.trashed(), last.name());
-            // The trash reset the file time; put it back so the screenshot keeps its date and place
-            java.nio.file.Files.setLastModifiedTime(restored, java.nio.file.attribute.FileTime.fromMillis(last.lastModified()));
-            reselect = new Shot(restored, 0, 0, null);
-        } catch (IOException e) {
-            ScreenshotToolkitClient.LOGGER.warn("Could not restore {}", last.trashed(), e);
+        reselect = null;
+        for (Deleted last : batch) {
+            try {
+                Path restored = library.restoreFromTrash(last.trashed(), last.name());
+                // The trash reset the file time; put it back so the screenshot keeps its date and place
+                java.nio.file.Files.setLastModifiedTime(restored, java.nio.file.attribute.FileTime.fromMillis(last.lastModified()));
+                if (reselect == null) {
+                    reselect = new Shot(restored, 0, 0, null);
+                }
+            } catch (IOException e) {
+                ScreenshotToolkitClient.LOGGER.warn("Could not restore {}", last.trashed(), e);
+            }
         }
         updateUndoButton();
         reload();
     }
 
+    /** Stars every checked screenshot, or unstars them all when they already are. */
+    private void starChecked() {
+        List<Shot> checked = grid.checkedShots();
+        boolean star = !checked.stream().allMatch(Shot::favorite);
+        Map<Path, Shot> updated = new HashMap<>();
+        for (Shot shot : checked) {
+            try {
+                ShotMetadata metadata = library.setFavorite(shot.file(), star);
+                updated.put(shot.file(), new Shot(shot.file(), shot.lastModified(), shot.size(), metadata));
+            } catch (IOException e) {
+                ScreenshotToolkitClient.LOGGER.warn("Could not save favorite for {}", shot.file(), e);
+            }
+        }
+        allShots = allShots.stream().map(shot -> updated.getOrDefault(shot.file(), shot)).toList();
+        refreshGrid();
+        updateFooter();
+    }
+
+    /** Swaps the footer between its normal buttons and the bulk actions. */
+    private void updateFooter() {
+        if (grid == null || bulkDeleteButton == null) {
+            return;
+        }
+        boolean checking = grid.isChecking();
+        normalFooter.forEach(button -> button.visible = !checking);
+        bulkFooter.forEach(button -> button.visible = checking);
+        List<Shot> checked = grid.checkedShots();
+        bulkDeleteButton.setMessage(Component.translatable(PREFIX + "deleteChecked", checked.size()));
+        bulkStarButton.setMessage(Component.translatable(!checked.isEmpty() && checked.stream().allMatch(Shot::favorite)
+                ? PREFIX + "unstarChecked" : PREFIX + "starChecked"));
+        updateUndoButton();
+    }
+
     private void updateUndoButton() {
         if (undoButton != null) {
-            undoButton.visible = !deleted.isEmpty();
+            // The bulk actions need the room, and Undo is back as soon as they are done
+            undoButton.visible = !deleted.isEmpty() && (grid == null || !grid.isChecking());
             undoButton.setMessage(deleted.size() > 1
                     ? Component.translatable(PREFIX + "undoMany", deleted.size())
                     : Component.translatable(PREFIX + "undo"));
@@ -217,6 +296,14 @@ public class GalleryScreen extends Screen {
 
     public Button undoButton() {
         return undoButton;
+    }
+
+    public Button bulkDeleteButton() {
+        return bulkDeleteButton;
+    }
+
+    public Button bulkStarButton() {
+        return bulkStarButton;
     }
 
     private void open(Shot shot) {
@@ -248,8 +335,11 @@ public class GalleryScreen extends Screen {
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
-        graphics.centeredText(font, title, width / 2, 11, 0xFFFFFFFF);
-        if (allShots != null) {
+        boolean checking = grid != null && grid.isChecking();
+        // While checking, the title says how many, like the selection bar of a photo app
+        Component heading = checking ? Component.translatable(PREFIX + "checked", grid.checkedShots().size()) : title;
+        graphics.centeredText(font, heading, width / 2, 11, 0xFFFFFFFF);
+        if (allShots != null && !checking) {
             Component count = Component.translatable(PREFIX + "count", visibleShots.size(), allShots.size());
             graphics.text(font, count, width - 12 - font.width(count), height - 12 - 15, 0xFF808080, false);
         }
@@ -262,6 +352,16 @@ public class GalleryScreen extends Screen {
 
     public List<Shot> visibleShots() {
         return visibleShots;
+    }
+
+    @Override
+    public boolean keyPressed(KeyEvent event) {
+        // Escape first lets go of the checked screenshots, then closes
+        if (event.key() == InputConstants.KEY_ESCAPE && grid != null && grid.isChecking()) {
+            grid.clearChecked();
+            return true;
+        }
+        return super.keyPressed(event);
     }
 
     @Override

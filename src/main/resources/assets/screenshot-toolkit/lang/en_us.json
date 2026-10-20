@@ -30,6 +30,11 @@
 	"screenshot-toolkit.gallery.count": "%s of %s",
 	"screenshot-toolkit.gallery.undo": "Undo Delete",
 	"screenshot-toolkit.gallery.undoMany": "Undo (%s)",
+	"screenshot-toolkit.gallery.checked": "%s selected",
+	"screenshot-toolkit.gallery.selectAll": "Select All",
+	"screenshot-toolkit.gallery.starChecked": "Star",
+	"screenshot-toolkit.gallery.unstarChecked": "Unstar",
+	"screenshot-toolkit.gallery.deleteChecked": "Delete (%s)",
 
 	"screenshot-toolkit.viewer.title": "Screenshot",
 	"screenshot-toolkit.viewer.copy": "Copy",
