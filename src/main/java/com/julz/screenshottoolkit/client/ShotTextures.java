@@ -44,6 +44,10 @@ public class ShotTextures implements AutoCloseable {
         return texture;
     }
 
+    public boolean isClosed() {
+        return closed;
+    }
+
     public boolean failed(Path image) {
         return failed.contains(image);
     }

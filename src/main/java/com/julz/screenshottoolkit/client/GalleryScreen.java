@@ -24,7 +24,7 @@ public class GalleryScreen extends Screen {
 
     private final Screen parent;
     private final ScreenshotLibrary library;
-    private final ShotTextures thumbnails;
+    private ShotTextures thumbnails;
     private ShotFilter filter;
     private List<Shot> allShots;
     private List<Shot> visibleShots = List.of();
@@ -92,6 +92,10 @@ public class GalleryScreen extends Screen {
 
         int footerY = height - margin - 20;
         int gridTop = top + 20 + 10;
+        if (thumbnails.isClosed()) {
+            // Released when another screen took over without saying it would come back
+            thumbnails = new ShotTextures(image -> Thumbnails.load(library, image));
+        }
         grid = addRenderableWidget(new ShotGrid(margin, gridTop, width - 2 * margin, footerY - 10 - gridTop, thumbnails, this::open));
 
         int footerWidth = Math.min(width - 2 * margin, 3 * 100 + 2 * gap);
@@ -165,6 +169,8 @@ public class GalleryScreen extends Screen {
         if (changed) {
             allShots = null;
             reload();
+            // A cropped-in-place screenshot keeps its name, so drop thumbnails that may show old pixels
+            thumbnails.close();
         }
         minecraft.gui.setScreen(this);
     }
