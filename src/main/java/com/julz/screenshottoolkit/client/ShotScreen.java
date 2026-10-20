@@ -12,6 +12,7 @@ import net.minecraft.client.gui.screens.ConfirmScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
 
@@ -25,7 +26,8 @@ import java.util.List;
 
 /**
  * One screenshot at full size, with its details and actions: copy, star, copy /tp, crop, open,
- * delete. Left and right arrows go to the previous and next screenshot.
+ * delete. Left and right arrows go to the previous and next screenshot, which are loaded ahead.
+ * Scrolling zooms in on the cursor, dragging pans, and a double click toggles zoom.
  */
 public class ShotScreen extends Screen {
     private static final String PREFIX = "screenshot-toolkit.viewer.";
@@ -44,7 +46,11 @@ public class ShotScreen extends Screen {
     private final GalleryScreen gallery;
     private final ScreenshotLibrary library;
     private final List<Shot> shots;
-    private final ShotTextures images = new ShotTextures(Thumbnails::loadFull);
+    // The screenshot on screen and its two neighbours
+    private final ShotTextures images = new ShotTextures(Thumbnails::loadFull, 3);
+    private static final float MAX_ZOOM = 8;
+    private static final float ZOOM_STEP = 1.25f;
+    private static final float DOUBLE_CLICK_ZOOM = 2.5f;
     private int index;
     private boolean changed;
 
@@ -56,6 +62,14 @@ public class ShotScreen extends Screen {
 
     private int lastMouseX;
     private int lastMouseY;
+
+    // Zoom over the fitted size, and the image point (0 to 1) at the middle of the view
+    private float zoom = 1;
+    private double centerX = 0.5;
+    private double centerY = 0.5;
+    private boolean panning;
+    private double panLastX;
+    private double panLastY;
 
     private Button favoriteButton;
     private Button teleportButton;
@@ -134,8 +148,8 @@ public class ShotScreen extends Screen {
     private void move(int delta) {
         int next = Mth.clamp(index + delta, 0, shots.size() - 1);
         if (next != index) {
-            images.forget(shot().file());
             index = next;
+            resetZoom();
             cropping = false;
             selecting = false;
             cropStart = cropEnd = null;
@@ -233,6 +247,8 @@ public class ShotScreen extends Screen {
     }
 
     private void toggleCrop() {
+        // Cropping works on the whole image
+        resetZoom();
         cropping = !cropping;
         selecting = false;
         cropStart = cropEnd = null;
@@ -257,6 +273,72 @@ public class ShotScreen extends Screen {
         int w = Math.max(1, Math.round(texture.width() * scale));
         int h = Math.max(1, Math.round(texture.height() * scale));
         return new int[]{(width - w) / 2, areaTop + (areaHeight - h) / 2, w, h};
+    }
+
+    // ---- Zoom ----
+
+    private void resetZoom() {
+        zoom = 1;
+        centerX = centerY = 0.5;
+        panning = false;
+    }
+
+    /** Where the zoomed image is drawn: x, y, width, height. Same as the fitted area at zoom 1. */
+    private double[] zoomedRect(int[] area) {
+        double w = area[2] * zoom;
+        double h = area[3] * zoom;
+        double middleX = area[0] + area[2] / 2.0;
+        double middleY = area[1] + area[3] / 2.0;
+        return new double[]{middleX - centerX * w, middleY - centerY * h, w, h};
+    }
+
+    /** Keeps the view inside the image, so zooming never shows empty space. */
+    private void clampCenter() {
+        double half = 0.5 / zoom;
+        centerX = Mth.clamp(centerX, half, 1 - half);
+        centerY = Mth.clamp(centerY, half, 1 - half);
+    }
+
+    /** Zooms by a factor, keeping the image point under the cursor where it is. */
+    private void zoomAt(double mouseX, double mouseY, float factor) {
+        ShotTextures.Texture texture = images.get(shot().file());
+        if (texture == null) {
+            return;
+        }
+        int[] area = imageArea(texture);
+        double[] before = zoomedRect(area);
+        double u = (mouseX - before[0]) / before[2];
+        double v = (mouseY - before[1]) / before[3];
+        zoom = Mth.clamp(zoom * factor, 1, MAX_ZOOM);
+        centerX = u - (mouseX - (area[0] + area[2] / 2.0)) / (area[2] * zoom);
+        centerY = v - (mouseY - (area[1] + area[3] / 2.0)) / (area[3] * zoom);
+        clampCenter();
+    }
+
+    public float zoom() {
+        return zoom;
+    }
+
+    @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        if (!cropping && scrollY != 0 && overImage(mouseX, mouseY)) {
+            zoomAt(mouseX, mouseY, scrollY > 0 ? ZOOM_STEP : 1 / ZOOM_STEP);
+            return true;
+        }
+        return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+    }
+
+    private void pan(double mouseX, double mouseY) {
+        ShotTextures.Texture texture = images.get(shot().file());
+        if (texture == null) {
+            return;
+        }
+        int[] area = imageArea(texture);
+        centerX -= (mouseX - panLastX) / (area[2] * zoom);
+        centerY -= (mouseY - panLastY) / (area[3] * zoom);
+        panLastX = mouseX;
+        panLastY = mouseY;
+        clampCenter();
     }
 
     /** Screen position to image pixel, clamped to the image. */
@@ -293,6 +375,20 @@ public class ShotScreen extends Screen {
             updateButtons();
             return true;
         }
+        if (!cropping && event.button() == InputConstants.MOUSE_BUTTON_LEFT && overImage(event.x(), event.y())) {
+            if (doubleClick) {
+                if (zoom > 1) {
+                    resetZoom();
+                } else {
+                    zoomAt(event.x(), event.y(), DOUBLE_CLICK_ZOOM);
+                }
+            } else if (zoom > 1) {
+                panning = true;
+                panLastX = event.x();
+                panLastY = event.y();
+            }
+            return true;
+        }
         return super.mouseClicked(event, doubleClick);
     }
 
@@ -300,6 +396,10 @@ public class ShotScreen extends Screen {
     public boolean mouseDragged(MouseButtonEvent event, double dragX, double dragY) {
         if (selecting) {
             extendSelection(event.x(), event.y());
+            return true;
+        }
+        if (panning) {
+            pan(event.x(), event.y());
             return true;
         }
         return super.mouseDragged(event, dragX, dragY);
@@ -311,6 +411,9 @@ public class ShotScreen extends Screen {
         if (selecting) {
             extendSelection(mouseX, mouseY);
         }
+        if (panning) {
+            pan(mouseX, mouseY);
+        }
         super.mouseMoved(mouseX, mouseY);
     }
 
@@ -319,6 +422,10 @@ public class ShotScreen extends Screen {
         if (selecting && event.button() == InputConstants.MOUSE_BUTTON_LEFT) {
             extendSelection(event.x(), event.y());
             selecting = false;
+            return true;
+        }
+        if (panning && event.button() == InputConstants.MOUSE_BUTTON_LEFT) {
+            panning = false;
             return true;
         }
         return super.mouseReleased(event);
@@ -397,7 +504,24 @@ public class ShotScreen extends Screen {
             int[] area = imageArea(texture);
             // A thin frame so dark screenshots don't melt into the background
             graphics.outline(area[0] - 1, area[1] - 1, area[2] + 2, area[3] + 2, 0x40FFFFFF);
-            ShotGrid.drawFitted(graphics, texture, area[0], area[1], area[2], area[3]);
+            if (zoom > 1) {
+                double[] view = zoomedRect(area);
+                graphics.enableScissor(area[0], area[1], area[0] + area[2], area[1] + area[3]);
+                graphics.blit(RenderPipelines.GUI_TEXTURED, texture.id(), (int) Math.round(view[0]), (int) Math.round(view[1]),
+                        0, 0, (int) Math.round(view[2]), (int) Math.round(view[3]),
+                        texture.width(), texture.height(), texture.width(), texture.height());
+                graphics.disableScissor();
+                graphics.text(font, Math.round(zoom * 100) + "%", area[0] + 4, area[1] + 4, 0xFFFFFFFF, true);
+            } else {
+                ShotGrid.drawFitted(graphics, texture, area[0], area[1], area[2], area[3]);
+            }
+            // Load the neighbours once this one is in, so arrowing through is instant
+            if (index > 0) {
+                images.prefetch(shots.get(index - 1).file());
+            }
+            if (index < shots.size() - 1) {
+                images.prefetch(shots.get(index + 1).file());
+            }
             int[] rect = cropRect();
             if (cropping && cropStart != null && cropEnd != null) {
                 int x1 = area[0] + Math.min(cropStart[0], cropEnd[0]) * area[2] / texture.width();
@@ -422,8 +546,11 @@ public class ShotScreen extends Screen {
 
         int infoY = infoTop() + (LINE_HEIGHT - TEXT_HEIGHT) / 2;
         graphics.centeredText(font, detailsLine(shot), width / 2, infoY, 0xFFC0C0C0);
-        graphics.centeredText(font, Component.translatable(PREFIX + "position", index + 1, shots.size()),
-                width / 2, infoY + LINE_HEIGHT, 0xFF808080);
+        Component position = Component.translatable(PREFIX + "position", index + 1, shots.size());
+        if (!cropping) {
+            position = Component.translatable(PREFIX + "positionHint", position, Component.translatable(zoom > 1 ? PREFIX + "panHint" : PREFIX + "zoomHint"));
+        }
+        graphics.centeredText(font, position, width / 2, infoY + LINE_HEIGHT, 0xFF808080);
     }
 
     /** "Survival World · Overworld · 120, 64, -30 · day · 2026-10-19 19:30:22" */

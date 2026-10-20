@@ -27,6 +27,8 @@ public class ModConfig {
     public boolean saveMetadata = true;
     // Days a deleted screenshot stays in screenshots/.trash before it is removed for good.
     public int trashDays = 7;
+    // Gallery thumbnail size step, 0 (smallest) to 3; changed with Ctrl+scroll in the gallery.
+    public int thumbnailSize = 1;
 
     public static ModConfig getInstance() {
         if (instance == null) {
@@ -62,5 +64,6 @@ public class ModConfig {
     /** Pulls hand-edited values back into range. */
     public void sanitize() {
         trashDays = Math.clamp(trashDays, 1, 90);
+        thumbnailSize = Math.clamp(thumbnailSize, 0, 3);
     }
 }

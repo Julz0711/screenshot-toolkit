@@ -116,7 +116,10 @@ public class ScreenshotLibrary {
 
     public void writeMetadata(Path image, ShotMetadata metadata) throws IOException {
         Files.createDirectories(metaDirectory());
-        Path file = metadataFile(image);
+        writeJson(metadataFile(image), metadata);
+    }
+
+    private static void writeJson(Path file, ShotMetadata metadata) throws IOException {
         Path temp = file.resolveSibling(file.getFileName() + ".tmp");
         try (Writer writer = Files.newBufferedWriter(temp)) {
             GSON.toJson(metadata, writer);
@@ -142,23 +145,82 @@ public class ScreenshotLibrary {
     public Path moveToTrash(Path image) throws IOException {
         Path trash = trashDirectory();
         Files.createDirectories(trash);
+        // The trash uses the file time as its countdown, so the sidecar remembers when it was taken
+        ShotMetadata metadata = readMetadata(image);
+        if (metadata == null) {
+            metadata = new ShotMetadata();
+        }
+        if (metadata.takenAt == null) {
+            metadata.takenAt = Files.getLastModifiedTime(image).toMillis();
+        }
         Path target = uniqueName(trash, image.getFileName().toString());
         Files.move(image, target);
-        // Starts the countdown now, not when the screenshot was taken
         Files.setLastModifiedTime(target, FileTime.fromMillis(System.currentTimeMillis()));
-        Path sidecar = metadataFile(image);
-        if (Files.exists(sidecar)) {
-            Files.move(sidecar, trash.resolve(target.getFileName() + ".json"), StandardCopyOption.REPLACE_EXISTING);
-        }
+        writeJson(trashSidecar(target), metadata);
+        Files.deleteIfExists(metadataFile(image));
         Files.deleteIfExists(thumbDirectory().resolve(image.getFileName()));
         return target;
+    }
+
+    private static Path trashSidecar(Path trashed) {
+        return trashed.resolveSibling(trashed.getFileName() + ".json");
+    }
+
+    /** What is in the trash, most recently deleted first. A shot's file time is when it was deleted. */
+    public List<Shot> listTrash() throws IOException {
+        List<Shot> shots = new ArrayList<>();
+        Path trash = trashDirectory();
+        if (!Files.isDirectory(trash)) {
+            return shots;
+        }
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(trash, ScreenshotLibrary::isImage)) {
+            for (Path file : stream) {
+                try {
+                    BasicFileAttributes attributes = Files.readAttributes(file, BasicFileAttributes.class);
+                    if (attributes.isRegularFile()) {
+                        shots.add(new Shot(file, attributes.lastModifiedTime().toMillis(), attributes.size(), readTrashMetadata(file)));
+                    }
+                } catch (NoSuchFileException e) {
+                    // Removed while listing
+                }
+            }
+        }
+        shots.sort(Comparator.comparingLong(Shot::lastModified).reversed().thenComparing(Shot::name));
+        return shots;
+    }
+
+    private ShotMetadata readTrashMetadata(Path trashed) {
+        Path file = trashSidecar(trashed);
+        if (!Files.isRegularFile(file)) {
+            return null;
+        }
+        try (Reader reader = Files.newBufferedReader(file)) {
+            return GSON.fromJson(reader, ShotMetadata.class);
+        } catch (IOException | JsonParseException e) {
+            return null;
+        }
+    }
+
+    /** Removes a trashed screenshot and its sidecar for good. */
+    public void deleteForever(Path trashed) throws IOException {
+        if (!trashed.getParent().equals(trashDirectory())) {
+            throw new IllegalArgumentException("Not in the trash: " + trashed);
+        }
+        Files.deleteIfExists(trashed);
+        Files.deleteIfExists(trashSidecar(trashed));
+    }
+
+    /** Whole days, rounded up, until the trash removes a screenshot deleted at {@code trashedAt}. */
+    public static int daysLeft(long trashedAt, int trashDays, long now) {
+        long left = trashedAt + Duration.ofDays(trashDays).toMillis() - now;
+        return (int) Math.max(0, (left + Duration.ofDays(1).toMillis() - 1) / Duration.ofDays(1).toMillis());
     }
 
     /** Puts a trashed screenshot back. Used by the gallery's undo. */
     public Path restoreFromTrash(Path trashed, String originalName) throws IOException {
         Path target = uniqueName(directory, originalName);
         Files.move(trashed, target);
-        Path sidecar = trashed.resolveSibling(trashed.getFileName() + ".json");
+        Path sidecar = trashSidecar(trashed);
         if (Files.exists(sidecar)) {
             Files.createDirectories(metaDirectory());
             Files.move(sidecar, metadataFile(target), StandardCopyOption.REPLACE_EXISTING);

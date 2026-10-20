@@ -69,6 +69,21 @@ public final class Thumbnails {
         }, EXECUTOR);
     }
 
+    /** Loads a small copy without saving it, for files that have no thumbnail of their own, like the trash. */
+    public static CompletableFuture<NativeImage> loadUncached(Path image) {
+        return CompletableFuture.supplyAsync(() -> {
+            try (NativeImage source = read(image)) {
+                int width = Math.min(WIDTH, source.getWidth());
+                int height = Math.max(1, Math.round(source.getHeight() * (float) width / source.getWidth()));
+                NativeImage small = new NativeImage(width, height, false);
+                source.resizeSubRectTo(0, 0, source.getWidth(), source.getHeight(), small);
+                return small;
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        }, EXECUTOR);
+    }
+
     /** Loads the full size image. The caller closes it. */
     public static CompletableFuture<NativeImage> loadFull(Path image) {
         return CompletableFuture.supplyAsync(() -> {

@@ -102,6 +102,39 @@ class ScreenshotLibraryTest {
     }
 
     @Test
+    void trashListsDeletesForeverAndKeepsTheDate() throws IOException {
+        ScreenshotLibrary library = new ScreenshotLibrary(dir);
+        Path old = shot("old.png", NOW - 50_000);
+        Path trashed = library.moveToTrash(old);
+        Files.setLastModifiedTime(trashed, FileTime.fromMillis(NOW - 1_000));
+        Path other = library.moveToTrash(shot("other.png", NOW));
+        Files.setLastModifiedTime(other, FileTime.fromMillis(NOW));
+
+        List<Shot> trash = library.listTrash();
+        assertEquals(List.of("other.png", "old.png"), trash.stream().map(Shot::name).toList());
+        assertEquals(NOW - 50_000, trash.get(1).takenAt(), "the sidecar remembers when it was taken");
+
+        // Back in the folder it sorts by its old date, not by when it was deleted
+        Path restored = library.restoreFromTrash(trashed, "old.png");
+        assertEquals(NOW - 50_000, library.list().stream().filter(s -> s.file().equals(restored)).findFirst().orElseThrow().takenAt());
+
+        library.deleteForever(other);
+        assertFalse(Files.exists(other));
+        assertFalse(Files.exists(dir.resolve(".trash/other.png.json")));
+        assertTrue(library.listTrash().isEmpty());
+        assertThrows(IllegalArgumentException.class, () -> library.deleteForever(restored));
+    }
+
+    @Test
+    void daysLeftRoundsUp() {
+        long day = Duration.ofDays(1).toMillis();
+        assertEquals(7, ScreenshotLibrary.daysLeft(NOW, 7, NOW));
+        assertEquals(7, ScreenshotLibrary.daysLeft(NOW, 7, NOW + 1));
+        assertEquals(1, ScreenshotLibrary.daysLeft(NOW, 7, NOW + 6 * day + 1));
+        assertEquals(0, ScreenshotLibrary.daysLeft(NOW, 7, NOW + 8 * day));
+    }
+
+    @Test
     void trashingTheSameNameTwiceKeepsBoth() throws IOException {
         ScreenshotLibrary library = new ScreenshotLibrary(dir);
         Path first = library.moveToTrash(shot("a.png", NOW));

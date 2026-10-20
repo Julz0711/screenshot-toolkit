@@ -9,6 +9,7 @@ import com.julz.screenshottoolkit.client.ScreenshotToolkitConfigScreen;
 import com.julz.screenshottoolkit.client.ShotGrid;
 import com.julz.screenshottoolkit.client.ShotScreen;
 import com.julz.screenshottoolkit.client.Thumbnails;
+import com.julz.screenshottoolkit.client.TrashScreen;
 import com.julz.screenshottoolkit.config.ModConfig;
 import com.julz.screenshottoolkit.core.ScreenshotLibrary;
 import com.julz.screenshottoolkit.core.Shot;
@@ -23,6 +24,8 @@ import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Options;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.client.input.MouseButtonInfo;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -88,6 +91,9 @@ public class ScreenshotToolkitClientGameTest implements FabricClientGameTest {
         context.takeScreenshot("screenshot-toolkit-gallery");
         testQuickDelete(context, library);
         testMultiDelete(context, library);
+        testDragSelect(context, library);
+        testThumbnailSize(context);
+        testTrash(context, library);
 
         // The viewer opens on the starred screenshot
         context.runOnClient(client -> {
@@ -99,6 +105,7 @@ public class ScreenshotToolkitClientGameTest implements FabricClientGameTest {
         context.waitForScreen(ShotScreen.class);
         context.waitTicks(10);
         context.takeScreenshot("screenshot-toolkit-viewer");
+        testZoom(context);
         testCropWithMouse(context, library, red);
         context.setScreen(() -> null);
 
@@ -193,14 +200,14 @@ public class ScreenshotToolkitClientGameTest implements FabricClientGameTest {
             GalleryScreen gallery = (GalleryScreen) client.gui.screen();
             gallery.grid().select(shotFor(gallery, blue));
             int[] cell = gallery.grid().cellPosition(gallery.visibleShots().indexOf(shotFor(gallery, blue)));
-            return new int[]{cell[0] + ShotGrid.THUMB_WIDTH - 8, cell[1] + 7};
+            return new int[]{cell[0] + gallery.grid().thumbWidth() - 8, cell[1] + 7};
         });
         clickAt(context, scale, box[0], box[1]);
         int[] middle = context.computeOnClient(client -> {
             GalleryScreen gallery = (GalleryScreen) client.gui.screen();
             gallery.grid().select(shotFor(gallery, green));
             int[] cell = gallery.grid().cellPosition(gallery.visibleShots().indexOf(shotFor(gallery, green)));
-            return new int[]{cell[0] + ShotGrid.THUMB_WIDTH / 2, cell[1] + ShotGrid.THUMB_HEIGHT / 2};
+            return new int[]{cell[0] + gallery.grid().thumbWidth() / 2, cell[1] + gallery.grid().thumbHeight() / 2};
         });
         clickAt(context, scale, middle[0], middle[1]);
         List<Path> checked = context.computeOnClient(client -> client.gui.screen() instanceof GalleryScreen gallery
@@ -225,6 +232,123 @@ public class ScreenshotToolkitClientGameTest implements FabricClientGameTest {
             return files.contains(green) && files.contains(blue);
         });
         assertTrue(back, "one Undo brings the whole batch back");
+    }
+
+    /** A box dragged from one thumbnail to another checks everything it touches and opens nothing. */
+    private void testDragSelect(ClientGameTestContext context, ScreenshotLibrary library) {
+        Path green = library.directory().resolve("2026-01-02_10.00.00.png");
+        Path blue = library.directory().resolve("2026-01-03_10.00.00.png");
+        int scale = context.computeOnClient(client -> client.getWindow().getGuiScale());
+        int[] points = context.computeOnClient(client -> {
+            GalleryScreen gallery = (GalleryScreen) client.gui.screen();
+            ShotGrid grid = gallery.grid();
+            grid.select(gallery.visibleShots().getFirst());
+            int[] from = grid.cellPosition(gallery.visibleShots().indexOf(shotFor(gallery, blue)));
+            int[] to = grid.cellPosition(gallery.visibleShots().indexOf(shotFor(gallery, green)));
+            // Green's row may only be partly visible, so aim at the top of its thumbnail
+            return new int[]{from[0] + grid.thumbWidth() / 2, from[1] + grid.thumbHeight() / 2, to[0] + grid.thumbWidth() / 2, to[1] + 10};
+        });
+        TestInput input = context.getInput();
+        input.setCursorPos(points[0] * scale, points[1] * scale);
+        context.waitTick();
+        input.holdMouse(InputConstants.MOUSE_BUTTON_LEFT);
+        context.waitTick();
+        for (int step = 1; step <= 5; step++) {
+            input.moveCursor((points[2] - points[0]) * scale / 5.0, (points[3] - points[1]) * scale / 5.0);
+            context.waitTick();
+        }
+        context.takeScreenshot("screenshot-toolkit-gallery-drag-select");
+        input.releaseMouse(InputConstants.MOUSE_BUTTON_LEFT);
+        context.waitTick();
+        String state = context.computeOnClient(client -> client.gui.screen() instanceof GalleryScreen gallery
+                ? gallery.grid().checkedShots().stream().map(shot -> shot.file().getFileName().toString()).toList().toString()
+                : "left the gallery for " + client.gui.screen());
+        assertTrue(state.contains(green.getFileName().toString()) && state.contains(blue.getFileName().toString()),
+                "dragging a box checks the thumbnails it touches, got " + state);
+        context.getInput().pressKey(InputConstants.KEY_ESCAPE);
+        context.waitTick();
+    }
+
+    private void testThumbnailSize(ClientGameTestContext context) {
+        int[] sizes = context.computeOnClient(client -> {
+            ShotGrid grid = ((GalleryScreen) client.gui.screen()).grid();
+            int before = grid.thumbWidth();
+            grid.changeSize(1);
+            int bigger = grid.thumbWidth();
+            grid.changeSize(-1);
+            return new int[]{before, bigger, grid.thumbWidth()};
+        });
+        assertTrue(sizes[1] > sizes[0] && sizes[2] == sizes[0], "thumbnail size steps up and back, got " + Arrays.toString(sizes));
+    }
+
+    /** Deletes a screenshot, finds it in the trash and restores it from there. */
+    private void testTrash(ClientGameTestContext context, ScreenshotLibrary library) {
+        Path green = library.directory().resolve("2026-01-02_10.00.00.png");
+        int scale = context.computeOnClient(client -> client.getWindow().getGuiScale());
+        context.runOnClient(client -> {
+            GalleryScreen gallery = (GalleryScreen) client.gui.screen();
+            gallery.grid().select(shotFor(gallery, green));
+            gallery.setFocused(gallery.grid());
+        });
+        context.getInput().pressKey(InputConstants.KEY_DELETE);
+        context.waitTick();
+        assertTrue(!Files.exists(green), "Delete key trashes the screenshot");
+
+        int[] trash = context.computeOnClient(client -> {
+            Button b = ((GalleryScreen) client.gui.screen()).trashButton();
+            return new int[]{b.getX() + b.getWidth() / 2, b.getY() + b.getHeight() / 2};
+        });
+        clickAt(context, scale, trash[0], trash[1]);
+        context.waitForScreen(TrashScreen.class);
+        context.waitFor(client -> ((TrashScreen) client.gui.screen()).isLoaded());
+        int[] cell = context.computeOnClient(client -> {
+            ShotGrid grid = ((TrashScreen) client.gui.screen()).grid();
+            int index = grid.shots().stream().map(shot -> shot.name()).toList().indexOf(green.getFileName().toString());
+            assertTrue(index >= 0, "the trash lists the deleted screenshot");
+            grid.select(grid.shots().get(index));
+            int[] position = grid.cellPosition(index);
+            return new int[]{position[0] + grid.thumbWidth() / 2, position[1] + 10};
+        });
+        clickAt(context, scale, cell[0], cell[1]);
+        context.waitTicks(10);
+        context.takeScreenshot("screenshot-toolkit-trash");
+        int[] restore = context.computeOnClient(client -> {
+            Button b = ((TrashScreen) client.gui.screen()).restoreButton();
+            assertTrue(b.active, "a click checks the screenshot so it can be restored");
+            return new int[]{b.getX() + b.getWidth() / 2, b.getY() + b.getHeight() / 2};
+        });
+        clickAt(context, scale, restore[0], restore[1]);
+        assertTrue(Files.exists(green), "Restore puts the screenshot back");
+
+        context.getInput().pressKey(InputConstants.KEY_ESCAPE);
+        context.waitForScreen(GalleryScreen.class);
+        context.waitFor(client -> ((GalleryScreen) client.gui.screen()).isLoaded()
+                && ((GalleryScreen) client.gui.screen()).visibleShots().stream().anyMatch(shot -> shot.file().equals(green)));
+    }
+
+    /** Scrolling zooms in on the image and a double click fits it again. */
+    private void testZoom(ClientGameTestContext context) {
+        context.waitFor(client -> ((ShotScreen) client.gui.screen()).imageBounds() != null);
+        float zoomed = context.computeOnClient(client -> {
+            ShotScreen screen = (ShotScreen) client.gui.screen();
+            int[] area = screen.imageBounds();
+            double x = area[0] + area[2] * 0.3;
+            double y = area[1] + area[3] * 0.3;
+            screen.mouseScrolled(x, y, 0, 1);
+            screen.mouseScrolled(x, y, 0, 1);
+            return screen.zoom();
+        });
+        assertTrue(zoomed > 1.5f, "scrolling zooms in, zoom " + zoomed);
+        context.waitTicks(2);
+        context.takeScreenshot("screenshot-toolkit-viewer-zoomed");
+        float fitted = context.computeOnClient(client -> {
+            ShotScreen screen = (ShotScreen) client.gui.screen();
+            int[] area = screen.imageBounds();
+            screen.mouseClicked(new MouseButtonEvent(area[0] + 5, area[1] + 5,
+                    new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0)), true);
+            return screen.zoom();
+        });
+        assertTrue(fitted == 1f, "a double click fits the image again, zoom " + fitted);
     }
 
     private static Shot shotFor(GalleryScreen gallery, Path file) {

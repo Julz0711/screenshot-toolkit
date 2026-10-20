@@ -12,6 +12,7 @@ import net.minecraft.client.gui.components.CycleButton;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 
 import java.io.IOException;
@@ -29,6 +30,8 @@ public class GalleryScreen extends Screen {
     private static final String PREFIX = "screenshot-toolkit.gallery.";
     // Sentinel for "every world" in the world filter
     private static final String ALL_WORLDS = "";
+    // Thumbnails kept on the GPU; a few screens full at the biggest size, about 40 MB
+    private static final int THUMBNAIL_CAPACITY = 300;
 
     private final Screen parent;
     private final ScreenshotLibrary library;
@@ -42,6 +45,7 @@ public class GalleryScreen extends Screen {
 
     private ShotGrid grid;
     private Button undoButton;
+    private Button trashButton;
     // The footer while nothing is checked, and the bulk actions that replace it while something is
     private final List<Button> normalFooter = new ArrayList<>();
     private final List<Button> bulkFooter = new ArrayList<>();
@@ -62,7 +66,7 @@ public class GalleryScreen extends Screen {
         super(Component.translatable(PREFIX + "title"));
         this.parent = parent;
         this.library = ScreenshotToolkitClient.library();
-        this.thumbnails = new ShotTextures(image -> Thumbnails.load(library, image));
+        this.thumbnails = new ShotTextures(image -> Thumbnails.load(library, image), THUMBNAIL_CAPACITY);
         this.filter = filter;
         this.reselect = reselect;
     }
@@ -109,11 +113,15 @@ public class GalleryScreen extends Screen {
                 .create(x, top, buttonWidth, 20, Component.translatable(PREFIX + "period"),
                         (button, value) -> applyFilter(filter.withPeriod(value))));
 
+        // Top right, across from the title, like the bin in a photo app
+        trashButton = addRenderableWidget(Button.builder(Component.translatable(PREFIX + "trash"), button -> openTrash())
+                .bounds(width - margin - 60, 5, 60, 20).build());
+
         int footerY = height - margin - 20;
         int gridTop = top + 20 + 10;
         if (thumbnails.isClosed()) {
             // Released when another screen took over without saying it would come back
-            thumbnails = new ShotTextures(image -> Thumbnails.load(library, image));
+            thumbnails = new ShotTextures(image -> Thumbnails.load(library, image), THUMBNAIL_CAPACITY);
         }
         grid = addRenderableWidget(new ShotGrid(margin, gridTop, width - 2 * margin, footerY - 10 - gridTop, thumbnails,
                 this::open, this::quickDelete, this::updateFooter));
@@ -298,6 +306,10 @@ public class GalleryScreen extends Screen {
         return undoButton;
     }
 
+    public Button trashButton() {
+        return trashButton;
+    }
+
     public Button bulkDeleteButton() {
         return bulkDeleteButton;
     }
@@ -321,6 +333,20 @@ public class GalleryScreen extends Screen {
             thumbnails.close();
         }
         minecraft.gui.setScreen(this);
+    }
+
+    private void openTrash() {
+        keepTextures = true;
+        grid.clearChecked();
+        minecraft.gui.setScreen(new TrashScreen(this));
+    }
+
+    /** Called by the trash when it closes. Undo is dropped if the trash changed, since its files may be gone. */
+    void returnFromTrash(boolean changed) {
+        if (changed) {
+            deleted.clear();
+        }
+        returnFrom(null, changed);
     }
 
     private void openFolder() {
@@ -352,6 +378,24 @@ public class GalleryScreen extends Screen {
 
     public List<Shot> visibleShots() {
         return visibleShots;
+    }
+
+    // Presses that start on the grid follow the mouse even outside it, so a selection box can scroll the grid
+    @Override
+    public void mouseMoved(double mouseX, double mouseY) {
+        if (grid != null && grid.isPressing()) {
+            grid.dragTo(mouseX, mouseY);
+        }
+        super.mouseMoved(mouseX, mouseY);
+    }
+
+    @Override
+    public boolean mouseReleased(MouseButtonEvent event) {
+        if (grid != null && grid.isPressing() && event.button() == InputConstants.MOUSE_BUTTON_LEFT) {
+            grid.release(event.x(), event.y());
+            return true;
+        }
+        return super.mouseReleased(event);
     }
 
     @Override
