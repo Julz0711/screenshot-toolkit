@@ -154,6 +154,13 @@ public class ShotGrid extends AbstractWidget {
         onCheckedChanged.run();
     }
 
+    /** Checks exactly these screenshots, for example again after a dialog rebuilt the screen. */
+    public void setChecked(java.util.Collection<Path> files) {
+        checked.clear();
+        shots.stream().map(Shot::file).filter(files::contains).forEach(checked::add);
+        onCheckedChanged.run();
+    }
+
     public void clearChecked() {
         checked.clear();
         anchor = -1;

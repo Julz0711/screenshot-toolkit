@@ -209,6 +209,10 @@ public class ShotScreen extends Screen {
 
     private void confirmDelete() {
         Shot shot = shot();
+        if (!ScreenshotToolkitClient.config().confirmDelete) {
+            delete(shot);
+            return;
+        }
         minecraft.gui.setScreen(new ConfirmScreen(confirmed -> {
             if (confirmed) {
                 delete(shot);

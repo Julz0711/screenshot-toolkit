@@ -12,7 +12,7 @@ without leaving the game.
   kept in the settings).
 - **Gallery** (F9): a grid of thumbnails, newest first. Search by file or world name, show only starred
   screenshots, and filter by world or server and by date. Arrow keys and Enter work too.
-  Delete a screenshot straight from the grid with the ✕ on a hovered thumbnail or the Delete key;
+  Delete a screenshot from the grid with the ✕ on a hovered thumbnail or the Delete key;
   it goes to the trash and Undo Delete brings it back.
   Select several with the box in a thumbnail's corner, Ctrl+click, Shift+click for a range, dragging a box across
   them, Space or Ctrl+A, then delete or star them together; Escape lets go. One Undo brings back a whole batch.
@@ -32,8 +32,9 @@ without leaving the game.
 - **Crop**: drag over a screenshot in the viewer, then save the crop as a new image or replace the original
   (the original then stays in the trash, like a deleted screenshot).
 - **Rename**: give a screenshot a name of your own; its location details and thumbnail move with it.
-- **Safe delete**: deleting from the viewer asks first; every delete moves the screenshot to `screenshots/.trash`,
-  where it stays for 7 days (changeable in the settings).
+- **Safe delete**: every delete asks first (turn off Confirm Delete in the settings to skip that) and moves the
+  screenshot to `screenshots/.trash`, where it stays for 7 days (changeable in the settings). Deleting from the trash
+  for good always asks.
 
 All keys can be changed or unbound in Controls → Key Binds → Screenshot Toolkit.
 

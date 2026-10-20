@@ -10,6 +10,7 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.CycleButton;
 import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.screens.ConfirmScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
@@ -219,8 +220,38 @@ public class GalleryScreen extends Screen {
         grid.setShots(visibleShots, empty);
     }
 
-    /** Moves screenshots to the trash without asking; Undo brings them back together. */
+    /** Asks first unless that is turned off in the settings, then moves the screenshots to the trash. */
     private void quickDelete(List<Shot> shots) {
+        if (shots.isEmpty()) {
+            return;
+        }
+        if (!ScreenshotToolkitClient.config().confirmDelete) {
+            moveToTrash(shots);
+            return;
+        }
+        List<Shot> targets = List.copyOf(shots);
+        List<Path> checkedBefore = grid.checkedShots().stream().map(Shot::file).toList();
+        keepTextures = true;
+        Component title = targets.size() == 1
+                ? Component.translatable("screenshot-toolkit.viewer.deleteTitle")
+                : Component.translatable(PREFIX + "deleteManyTitle", targets.size());
+        Component message = targets.size() == 1
+                ? Component.translatable("screenshot-toolkit.viewer.deleteMessage", targets.getFirst().name(), ScreenshotToolkitClient.config().trashDays)
+                : Component.translatable(PREFIX + "deleteManyMessage", ScreenshotToolkitClient.config().trashDays);
+        minecraft.gui.setScreen(new ConfirmScreen(confirmed -> {
+            // Coming back rebuilds the grid; keep the spot and, when nothing was deleted, the selection
+            reselect = targets.getFirst();
+            minecraft.gui.setScreen(this);
+            if (confirmed) {
+                moveToTrash(targets);
+            } else {
+                grid.setChecked(checkedBefore);
+            }
+        }, title, message));
+    }
+
+    /** Moves screenshots to the trash; Undo brings them back together. */
+    private void moveToTrash(List<Shot> shots) {
         List<Deleted> batch = new ArrayList<>();
         List<Path> gone = new ArrayList<>();
         for (Shot shot : shots) {

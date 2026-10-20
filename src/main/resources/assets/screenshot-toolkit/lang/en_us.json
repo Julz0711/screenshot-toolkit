@@ -35,6 +35,8 @@
 	"screenshot-toolkit.gallery.starChecked": "Star",
 	"screenshot-toolkit.gallery.unstarChecked": "Unstar",
 	"screenshot-toolkit.gallery.deleteChecked": "Delete (%s)",
+	"screenshot-toolkit.gallery.deleteManyTitle": "Delete %s screenshots?",
+	"screenshot-toolkit.gallery.deleteManyMessage": "They go to screenshots/.trash and are removed for good after %s days.",
 	"screenshot-toolkit.gallery.trash": "Trash",
 	"screenshot-toolkit.gallery.albums": "Albums",
 	"screenshot-toolkit.gallery.addToAlbum": "Album",
@@ -103,6 +105,8 @@
 	"screenshot-toolkit.config.keepChatMessage.tooltip": "Also show the vanilla \"Saved screenshot as\" chat message.",
 	"screenshot-toolkit.config.saveMetadata": "Save Location",
 	"screenshot-toolkit.config.saveMetadata.tooltip": "Remember the world, coordinates, dimension and time of each screenshot, for the gallery and its Copy /tp button. Stored in screenshots/.meta, never inside the image.",
+	"screenshot-toolkit.config.confirmDelete": "Confirm Delete",
+	"screenshot-toolkit.config.confirmDelete.tooltip": "Ask before a screenshot goes to the trash. Turn off to delete right away; Undo in the gallery still brings it back. Deleting from the trash for good always asks.",
 	"screenshot-toolkit.config.trashDays": "Keep Deleted",
 	"screenshot-toolkit.config.trashDays.tooltip": "How long deleted screenshots stay in screenshots/.trash before they are removed for good.",
 

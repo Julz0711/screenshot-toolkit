@@ -26,6 +26,8 @@ import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Options;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.screens.ConfirmScreen;
+import net.minecraft.network.chat.CommonComponents;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.input.MouseButtonInfo;
 
@@ -97,6 +99,7 @@ public class ScreenshotToolkitClientGameTest implements FabricClientGameTest {
         testThumbnailSize(context);
         testTrash(context, library);
         testAlbums(context, library);
+        context.runOnClient(client -> ScreenshotToolkitClient.config().confirmDelete = true);
 
         // The viewer opens on the starred screenshot
         context.runOnClient(client -> {
@@ -129,20 +132,30 @@ public class ScreenshotToolkitClientGameTest implements FabricClientGameTest {
         Path blue = library.directory().resolve("2026-01-03_10.00.00.png");
         int scale = context.computeOnClient(client -> client.getWindow().getGuiScale());
 
-        // Delete key on the selected thumbnail
-        context.runOnClient(client -> {
-            GalleryScreen gallery = (GalleryScreen) client.gui.screen();
-            gallery.visibleShots().stream().filter(shot -> shot.file().equals(green)).findFirst().ifPresent(gallery.grid()::select);
-            gallery.setFocused(gallery.grid());
-        });
-        context.getInput().pressKey(InputConstants.KEY_DELETE);
-        context.waitTick();
-        assertTrue(!Files.exists(green), "Delete key moves the selected screenshot to the trash");
+        // Delete key on the selected thumbnail asks first: No keeps it, Yes trashes it
+        for (boolean yes : new boolean[]{false, true}) {
+            context.runOnClient(client -> {
+                GalleryScreen gallery = (GalleryScreen) client.gui.screen();
+                gallery.visibleShots().stream().filter(shot -> shot.file().equals(green)).findFirst().ifPresent(gallery.grid()::select);
+                gallery.setFocused(gallery.grid());
+            });
+            context.getInput().pressKey(InputConstants.KEY_DELETE);
+            context.waitForScreen(ConfirmScreen.class);
+            if (yes) {
+                context.takeScreenshot("screenshot-toolkit-gallery-confirm-delete");
+            }
+            answerConfirm(context, scale, yes);
+            context.waitForScreen(GalleryScreen.class);
+            assertTrue(Files.exists(green) != yes, yes ? "Yes moves the screenshot to the trash" : "No keeps the screenshot");
+        }
         boolean listed = context.computeOnClient(client -> ((GalleryScreen) client.gui.screen()).visibleShots().stream()
                 .anyMatch(shot -> shot.file().equals(green)));
         assertTrue(!listed, "deleted screenshot leaves the grid");
         clickGalleryUndo(context, scale);
         context.waitFor(client -> Files.exists(green) && ((GalleryScreen) client.gui.screen()).isLoaded());
+
+        // The rest of the gallery tests delete straight away, as with the setting turned off
+        context.runOnClient(client -> ScreenshotToolkitClient.config().confirmDelete = false);
 
         // The corner button on a hovered thumbnail
         int[] corner = context.computeOnClient(client -> {
@@ -422,6 +435,18 @@ public class ScreenshotToolkitClientGameTest implements FabricClientGameTest {
         context.waitTicks(2);
         context.getInput().pressMouse(InputConstants.MOUSE_BUTTON_LEFT);
         context.waitTicks(2);
+    }
+
+    private static void answerConfirm(ClientGameTestContext context, int scale, boolean yes) {
+        int[] center = context.computeOnClient(client -> {
+            String wanted = (yes ? CommonComponents.GUI_YES : CommonComponents.GUI_NO).getString();
+            Button b = client.gui.screen().children().stream()
+                    .filter(child -> child instanceof Button button && button.getMessage().getString().equals(wanted))
+                    .map(child -> (Button) child).findFirst()
+                    .orElseThrow(() -> new AssertionError("no " + wanted + " button"));
+            return new int[]{b.getX() + b.getWidth() / 2, b.getY() + b.getHeight() / 2};
+        });
+        clickAt(context, scale, center[0], center[1]);
     }
 
     private static void clickGalleryUndo(ClientGameTestContext context, int scale) {

@@ -27,6 +27,8 @@ public class ModConfig {
     public boolean saveMetadata = true;
     // Days a deleted screenshot stays in screenshots/.trash before it is removed for good.
     public int trashDays = 7;
+    // Ask before moving a screenshot to the trash. Deleting from the trash for good always asks.
+    public boolean confirmDelete = true;
     // Gallery thumbnail size step, 0 (smallest) to 3; changed with Ctrl+scroll in the gallery.
     public int thumbnailSize = 1;
 

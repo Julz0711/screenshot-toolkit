@@ -16,6 +16,7 @@ public class ScreenshotToolkitConfigScreen extends OptionsSubScreen {
     private final OptionInstance<Boolean> keepChatMessage;
     private final OptionInstance<Boolean> saveMetadata;
     private final OptionInstance<Integer> trashDays;
+    private final OptionInstance<Boolean> confirmDelete;
 
     public ScreenshotToolkitConfigScreen(Screen parent) {
         super(parent, Minecraft.getInstance().options, Component.translatable(PREFIX + "title"));
@@ -24,6 +25,7 @@ public class ScreenshotToolkitConfigScreen extends OptionsSubScreen {
         this.showToast = booleanOption("showToast", config.showToast);
         this.keepChatMessage = booleanOption("keepChatMessage", config.keepChatMessage);
         this.saveMetadata = booleanOption("saveMetadata", config.saveMetadata);
+        this.confirmDelete = booleanOption("confirmDelete", config.confirmDelete);
         this.trashDays = new OptionInstance<>(
                 PREFIX + "trashDays",
                 OptionInstance.cachedConstantTooltip(Component.translatable(PREFIX + "trashDays.tooltip")),
@@ -39,7 +41,7 @@ public class ScreenshotToolkitConfigScreen extends OptionsSubScreen {
         this.list.addBig(this.copyToClipboard);
         this.list.addSmall(this.showToast, this.keepChatMessage);
         this.list.addBig(this.saveMetadata);
-        this.list.addBig(this.trashDays);
+        this.list.addSmall(this.confirmDelete, this.trashDays);
     }
 
     @Override
@@ -51,6 +53,7 @@ public class ScreenshotToolkitConfigScreen extends OptionsSubScreen {
         config.keepChatMessage = this.keepChatMessage.get();
         config.saveMetadata = this.saveMetadata.get();
         config.trashDays = this.trashDays.get();
+        config.confirmDelete = this.confirmDelete.get();
         config.sanitize();
         ModConfig.save();
     }
