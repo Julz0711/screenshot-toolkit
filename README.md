@@ -1,7 +1,7 @@
 # Screenshot Toolkit
 
 A client-side Minecraft Fabric mod for 26.3 that turns F2 into a complete screenshot workflow: every
-screenshot lands on your clipboard, and an in-game gallery lets you browse, star, crop and delete them
+screenshot lands on your clipboard, and an in-game gallery lets you browse, star, rename, crop and delete them
 without leaving the game.
 
 ## Features
@@ -13,12 +13,13 @@ without leaving the game.
 - **Gallery** (F9): a grid of thumbnails, newest first. Search by file or world name, show only starred
   screenshots, and filter by world or server and by date. Arrow keys and Enter work too.
 - **Viewer**: click a thumbnail to see it full size with its world, dimension, coordinates and time.
-  Copy it again, star it, open it in your image viewer, crop it, or delete it. Left and right arrows go to the
+  Copy it again, star it, rename it, open it in your image viewer, crop it, or delete it. Left and right arrows go to the
   previous and next screenshot.
 - **Clean-shot key** (F6): hides the HUD and hand for one frame, takes the screenshot and brings them back.
 - **Copy /tp**: copies a command that puts you back where a screenshot was taken, in the right dimension and
   facing the same way (needs cheats or operator rights, like any `/tp`).
 - **Crop**: drag over a screenshot in the viewer; the crop is saved as a new file and the original is kept.
+- **Rename**: give a screenshot a name of your own; its location details and thumbnail move with it.
 - **Safe delete**: deleting asks first and moves the screenshot to `screenshots/.trash`, where it stays for 7 days.
 
 All keys can be changed or unbound in Controls → Key Binds → Screenshot Toolkit.

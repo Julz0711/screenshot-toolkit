@@ -9,6 +9,7 @@ import java.io.Reader;
 import java.io.UncheckedIOException;
 import java.io.Writer;
 import java.nio.file.DirectoryStream;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
@@ -194,6 +195,62 @@ public class ScreenshotLibrary {
             }
         }
         return removed;
+    }
+
+    /** Longest name, without the extension, that rename accepts. */
+    public static final int MAX_NAME_LENGTH = 100;
+
+    /**
+     * Turns what a player typed into a safe file name without extension: characters Windows,
+     * macOS or Linux reject become underscores, a typed ".png" is dropped, and trailing dots and
+     * spaces (which Windows strips) are removed. Returns "" when nothing usable is left.
+     */
+    public static String cleanName(String typed) {
+        String name = typed.strip();
+        if (name.toLowerCase(java.util.Locale.ROOT).endsWith(".png")) {
+            name = name.substring(0, name.length() - 4);
+        }
+        name = name.replaceAll("[\\\\/:*?\"<>|\\p{Cntrl}]", "_");
+        name = name.replaceAll("[. ]+$", "");
+        if (name.startsWith(".")) {
+            // Hidden files are not listed
+            name = "_" + name.substring(1);
+        }
+        return name.length() > MAX_NAME_LENGTH ? name.substring(0, MAX_NAME_LENGTH) : name;
+    }
+
+    /**
+     * Renames a screenshot, keeping its extension, and moves its sidecar and thumbnail along.
+     * Returns the new file. Throws FileAlreadyExistsException when another screenshot has the
+     * name, and IllegalArgumentException when the name has nothing usable in it.
+     */
+    public Path rename(Path image, String typed) throws IOException {
+        String base = cleanName(typed);
+        if (base.isEmpty()) {
+            throw new IllegalArgumentException("Empty name");
+        }
+        String name = image.getFileName().toString();
+        int dot = name.lastIndexOf('.');
+        String extension = dot > 0 ? name.substring(dot) : "";
+        Path target = image.resolveSibling(base + extension);
+        if (target.equals(image)) {
+            return image;
+        }
+        // A change of case only is fine even where file names ignore case
+        boolean sameName = target.getFileName().toString().equalsIgnoreCase(name);
+        if (!sameName && Files.exists(target)) {
+            throw new FileAlreadyExistsException(target.toString());
+        }
+        Files.move(image, target);
+        Path sidecar = metadataFile(image);
+        if (Files.exists(sidecar)) {
+            Files.move(sidecar, metadataFile(target), StandardCopyOption.REPLACE_EXISTING);
+        }
+        Path thumbnail = thumbDirectory().resolve(name);
+        if (Files.exists(thumbnail)) {
+            Files.move(thumbnail, thumbDirectory().resolve(target.getFileName()), StandardCopyOption.REPLACE_EXISTING);
+        }
+        return target;
     }
 
     /** A file name in the folder that is not taken yet: name.png, name_1.png, name_2.png and so on. */

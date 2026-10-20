@@ -147,4 +147,46 @@ class ScreenshotLibraryTest {
         metadata.world = world;
         return new Shot(Path.of("x.png"), NOW, 1, metadata);
     }
+
+    @Test
+    void cleansTypedNames() {
+        assertEquals("my base", ScreenshotLibrary.cleanName("  my base.PNG "));
+        assertEquals("a_b_c_d", ScreenshotLibrary.cleanName("a/b:c?d"));
+        assertEquals("trailing", ScreenshotLibrary.cleanName("trailing... "));
+        assertEquals("_hidden", ScreenshotLibrary.cleanName(".hidden"));
+        assertEquals("", ScreenshotLibrary.cleanName(" .png "));
+        assertEquals(ScreenshotLibrary.MAX_NAME_LENGTH, ScreenshotLibrary.cleanName("x".repeat(300)).length());
+    }
+
+    @Test
+    void renameMovesSidecarAndThumbnail() throws IOException {
+        Path image = shot("2026-10-20_01.03.15.png", NOW);
+        ScreenshotLibrary library = new ScreenshotLibrary(dir);
+        ShotMetadata metadata = new ShotMetadata();
+        metadata.world = "New World";
+        library.writeMetadata(image, metadata);
+        Files.createDirectories(library.thumbDirectory());
+        Files.write(library.thumbDirectory().resolve(image.getFileName()), new byte[]{1});
+
+        Path renamed = library.rename(image, "Mountain base");
+
+        assertEquals(dir.resolve("Mountain base.png"), renamed);
+        assertFalse(Files.exists(image));
+        assertEquals("New World", library.readMetadata(renamed).world);
+        assertFalse(Files.exists(library.metadataFile(image)));
+        assertTrue(Files.exists(library.thumbDirectory().resolve("Mountain base.png")));
+        assertEquals(NOW, Files.getLastModifiedTime(renamed).toMillis(), "keeps its date");
+    }
+
+    @Test
+    void renameRefusesTakenAndEmptyNames() throws IOException {
+        Path a = shot("a.png", NOW);
+        shot("b.png", NOW);
+        ScreenshotLibrary library = new ScreenshotLibrary(dir);
+
+        assertThrows(java.nio.file.FileAlreadyExistsException.class, () -> library.rename(a, "b"));
+        assertThrows(IllegalArgumentException.class, () -> library.rename(a, "  "));
+        assertEquals(a, library.rename(a, "a.png"));
+        assertTrue(Files.exists(a));
+    }
 }

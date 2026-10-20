@@ -30,8 +30,16 @@ import java.util.List;
 public class ShotScreen extends Screen {
     private static final String PREFIX = "screenshot-toolkit.viewer.";
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(ZoneId.systemDefault());
-    private static final int INFO_HEIGHT = 24;
-    private static final int BUTTONS_HEIGHT = 52;
+    // Layout, in GUI pixels
+    private static final int MARGIN = 12;
+    private static final int TITLE_HEIGHT = 30;
+    private static final int BUTTON_HEIGHT = 20;
+    private static final int BUTTON_GAP = 6;
+    private static final int BUTTON_WIDTH = 84;
+    private static final int ARROW_WIDTH = 24;
+    private static final int LINE_HEIGHT = 12;
+    private static final int TEXT_HEIGHT = 9;
+    private static final int SECTION_GAP = 10;
 
     private final GalleryScreen gallery;
     private final ScreenshotLibrary library;
@@ -52,6 +60,7 @@ public class ShotScreen extends Screen {
     private Button favoriteButton;
     private Button teleportButton;
     private Button cropButton;
+    private Button renameButton;
     private Button backButton;
 
     public ShotScreen(GalleryScreen gallery, List<Shot> shots, int index) {
@@ -68,36 +77,45 @@ public class ShotScreen extends Screen {
 
     @Override
     protected void init() {
-        int gap = 4;
-        int rowWidth = Math.min(width - 20, 4 * 90 + 3 * gap);
-        int button = (rowWidth - 3 * gap) / 4;
+        // Two rows of equal width: the actions on top, browsing below
+        int rowWidth = Math.min(width - 2 * MARGIN, 5 * BUTTON_WIDTH + 4 * BUTTON_GAP);
         int left = (width - rowWidth) / 2;
-        int row1 = height - BUTTONS_HEIGHT;
-        int row2 = row1 + 24;
+        int row2 = buttonsTop() + BUTTON_HEIGHT + BUTTON_GAP;
+        int row1 = buttonsTop();
 
+        int action = (rowWidth - 4 * BUTTON_GAP) / 5;
+        int x = left;
         addRenderableWidget(Button.builder(Component.translatable(PREFIX + "copy"), b -> copy())
-                .bounds(left, row1, button, 20).build());
+                .bounds(x, row1, action, BUTTON_HEIGHT).build());
+        x += action + BUTTON_GAP;
         favoriteButton = addRenderableWidget(Button.builder(Component.empty(), b -> toggleFavorite())
-                .bounds(left + (button + gap), row1, button, 20).build());
+                .bounds(x, row1, action, BUTTON_HEIGHT).build());
+        x += action + BUTTON_GAP;
         teleportButton = addRenderableWidget(Button.builder(Component.translatable(PREFIX + "teleport"), b -> copyTeleport())
-                .bounds(left + 2 * (button + gap), row1, button, 20).build());
+                .bounds(x, row1, action, BUTTON_HEIGHT).build());
+        x += action + BUTTON_GAP;
+        renameButton = addRenderableWidget(Button.builder(Component.translatable(PREFIX + "rename"), b -> openRename())
+                .bounds(x, row1, action, BUTTON_HEIGHT).build());
+        // The last button takes the rounding leftovers so both rows end at the same edge
+        x += action + BUTTON_GAP;
         cropButton = addRenderableWidget(Button.builder(Component.translatable(PREFIX + "crop"), b -> cropPressed())
-                .bounds(left + 3 * (button + gap), row1, button, 20).build());
+                .bounds(x, row1, left + rowWidth - x, BUTTON_HEIGHT).build());
 
         addRenderableWidget(Button.builder(Component.literal("<"), b -> move(-1))
-                .bounds(left, row2, 20, 20).build());
-        int middle = (rowWidth - 2 * 20 - 4 * gap) / 3;
-        int x = left + 20 + gap;
+                .bounds(left, row2, ARROW_WIDTH, BUTTON_HEIGHT).build());
+        int middle = (rowWidth - 2 * ARROW_WIDTH - 4 * BUTTON_GAP) / 3;
+        x = left + ARROW_WIDTH + BUTTON_GAP;
         addRenderableWidget(Button.builder(Component.translatable(PREFIX + "open"), b -> openFile())
-                .bounds(x, row2, middle, 20).build());
-        x += middle + gap;
+                .bounds(x, row2, middle, BUTTON_HEIGHT).build());
+        x += middle + BUTTON_GAP;
         addRenderableWidget(Button.builder(Component.translatable(PREFIX + "delete"), b -> confirmDelete())
-                .bounds(x, row2, middle, 20).build());
-        x += middle + gap;
+                .bounds(x, row2, middle, BUTTON_HEIGHT).build());
+        x += middle + BUTTON_GAP;
+        int lastArrow = left + rowWidth - ARROW_WIDTH;
         backButton = addRenderableWidget(Button.builder(Component.translatable(PREFIX + "back"), b -> onClose())
-                .bounds(x, row2, middle, 20).build());
+                .bounds(x, row2, lastArrow - BUTTON_GAP - x, BUTTON_HEIGHT).build());
         addRenderableWidget(Button.builder(Component.literal(">"), b -> move(1))
-                .bounds(left + rowWidth - 20, row2, 20, 20).build());
+                .bounds(lastArrow, row2, ARROW_WIDTH, BUTTON_HEIGHT).build());
 
         updateButtons();
     }
@@ -109,6 +127,7 @@ public class ShotScreen extends Screen {
         // While cropping, Crop turns into Save Crop and Back into Cancel
         cropButton.setMessage(Component.translatable(cropping ? PREFIX + "saveCrop" : PREFIX + "crop"));
         cropButton.active = !cropping || cropRect() != null;
+        renameButton.active = !cropping;
         backButton.setMessage(Component.translatable(cropping ? PREFIX + "cancelCrop" : PREFIX + "back"));
     }
 
@@ -147,6 +166,27 @@ public class ShotScreen extends Screen {
             SystemToast.addOrUpdate(minecraft.gui.toastManager(), SystemToast.SystemToastId.PERIODIC_NOTIFICATION,
                     Component.translatable(PREFIX + "teleportCopied"), Component.literal(command));
         }
+    }
+
+    private void openRename() {
+        minecraft.gui.setScreen(new RenameScreen(this, library, shot().file(), this::renamed));
+    }
+
+    private void renamed(Path file) {
+        Shot old = shot();
+        images.forget(old.file());
+        shots.set(index, new Shot(file, old.lastModified(), old.size(), library.readMetadata(file)));
+        changed = true;
+    }
+
+    /** Top of the two button rows. */
+    private int buttonsTop() {
+        return height - MARGIN - 2 * BUTTON_HEIGHT - BUTTON_GAP;
+    }
+
+    /** Top of the two lines of details above the buttons. */
+    private int infoTop() {
+        return buttonsTop() - SECTION_GAP - 2 * LINE_HEIGHT;
     }
 
     private void openFile() {
@@ -210,9 +250,9 @@ public class ShotScreen extends Screen {
 
     /** Where the image is drawn on screen: x, y, width, height. */
     private int[] imageArea(ShotTextures.Texture texture) {
-        int areaTop = 28;
-        int areaHeight = height - areaTop - BUTTONS_HEIGHT - INFO_HEIGHT;
-        int areaWidth = width - 20;
+        int areaTop = TITLE_HEIGHT;
+        int areaHeight = infoTop() - SECTION_GAP - areaTop;
+        int areaWidth = width - 4 * MARGIN;
         float scale = Math.min(areaWidth / (float) texture.width(), areaHeight / (float) texture.height());
         int w = Math.max(1, Math.round(texture.width() * scale));
         int h = Math.max(1, Math.round(texture.height() * scale));
@@ -327,11 +367,13 @@ public class ShotScreen extends Screen {
         images.upload();
         Shot shot = shot();
         graphics.centeredText(font, cropping ? Component.translatable(PREFIX + "cropHint") : Component.literal(shot.name()),
-                width / 2, 10, 0xFFFFFFFF);
+                width / 2, (TITLE_HEIGHT - TEXT_HEIGHT) / 2, 0xFFFFFFFF);
 
         ShotTextures.Texture texture = images.get(shot.file());
         if (texture != null) {
             int[] area = imageArea(texture);
+            // A thin frame so dark screenshots don't melt into the background
+            graphics.outline(area[0] - 1, area[1] - 1, area[2] + 2, area[3] + 2, 0x40FFFFFF);
             ShotGrid.drawFitted(graphics, texture, area[0], area[1], area[2], area[3]);
             int[] rect = cropRect();
             if (cropping && cropStart != null && cropEnd != null) {
@@ -355,10 +397,10 @@ public class ShotScreen extends Screen {
             graphics.centeredText(font, status, width / 2, height / 2 - 20, 0xFF808080);
         }
 
-        int infoY = height - BUTTONS_HEIGHT - INFO_HEIGHT + 2;
+        int infoY = infoTop() + (LINE_HEIGHT - TEXT_HEIGHT) / 2;
         graphics.centeredText(font, detailsLine(shot), width / 2, infoY, 0xFFC0C0C0);
         graphics.centeredText(font, Component.translatable(PREFIX + "position", index + 1, shots.size()),
-                width / 2, infoY + 11, 0xFF808080);
+                width / 2, infoY + LINE_HEIGHT, 0xFF808080);
     }
 
     /** "Survival World · Overworld · 120, 64, -30 · day · 2026-10-19 19:30:22" */
@@ -406,6 +448,10 @@ public class ShotScreen extends Screen {
     /** For tests: the crop button, the back button and where the image is drawn. */
     public Button cropButton() {
         return cropButton;
+    }
+
+    public Button renameButton() {
+        return renameButton;
     }
 
     public Button backButton() {

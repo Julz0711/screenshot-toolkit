@@ -2,6 +2,7 @@ package com.julz.screenshottoolkit.test;
 
 import com.julz.screenshottoolkit.client.Crop;
 import com.julz.screenshottoolkit.client.GalleryScreen;
+import com.julz.screenshottoolkit.client.RenameScreen;
 import com.julz.screenshottoolkit.client.ScreenshotToolkitClient;
 import com.julz.screenshottoolkit.client.ScreenshotToolkitConfigScreen;
 import com.julz.screenshottoolkit.client.ShotScreen;
@@ -147,8 +148,23 @@ public class ScreenshotToolkitClientGameTest implements FabricClientGameTest {
         }
         Path shown = context.computeOnClient(client -> ((ShotScreen) client.gui.screen()).currentFile());
         assertEquals(cropped, shown, "viewer shows the cropped copy");
+
+        // Rename the cropped copy through the Rename screen
+        clickButton(context, scale, screen -> screen.renameButton());
+        context.waitForScreen(RenameScreen.class);
+        context.runOnClient(client -> ((RenameScreen) client.gui.screen()).nameBox().setValue("Renamed shot"));
+        context.takeScreenshot("screenshot-toolkit-rename");
+        context.getInput().pressKey(InputConstants.KEY_RETURN);
+        context.waitForScreen(ShotScreen.class);
+        Path renamed = library.directory().resolve("Renamed shot.png");
+        assertTrue(Files.exists(renamed), "renamed file exists");
+        assertTrue(!Files.exists(cropped), "old name is gone");
+        Path shownAfterRename = context.computeOnClient(client -> ((ShotScreen) client.gui.screen()).currentFile());
+        assertEquals(renamed, shownAfterRename, "viewer shows the renamed file");
+        context.waitTicks(5);
+        context.takeScreenshot("screenshot-toolkit-viewer-renamed");
         try {
-            library.moveToTrash(cropped);
+            library.moveToTrash(renamed);
         } catch (IOException e) {
             throw new AssertionError(e);
         }

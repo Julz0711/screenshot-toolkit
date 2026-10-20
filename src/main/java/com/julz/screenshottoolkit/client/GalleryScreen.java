@@ -53,10 +53,12 @@ public class GalleryScreen extends Screen {
         if (allShots == null && loading == null) {
             reload();
         }
-        int top = 22;
-        int rowWidth = Math.min(width - 20, 520);
+        // Same spacing as the viewer: 12 px margins, 6 px between buttons, 10 px between sections
+        int margin = 12;
+        int gap = 6;
+        int top = 30;
+        int rowWidth = Math.min(width - 2 * margin, 540);
         int left = (width - rowWidth) / 2;
-        int gap = 4;
         int searchWidth = (rowWidth - 3 * gap) * 34 / 100;
         int buttonWidth = (rowWidth - 3 * gap - searchWidth) / 3;
 
@@ -88,10 +90,11 @@ public class GalleryScreen extends Screen {
                 .create(x, top, buttonWidth, 20, Component.translatable(PREFIX + "period"),
                         (button, value) -> applyFilter(filter.withPeriod(value))));
 
-        grid = addRenderableWidget(new ShotGrid(10, top + 28, width - 20, height - top - 28 - 34, thumbnails, this::open));
+        int footerY = height - margin - 20;
+        int gridTop = top + 20 + 10;
+        grid = addRenderableWidget(new ShotGrid(margin, gridTop, width - 2 * margin, footerY - 10 - gridTop, thumbnails, this::open));
 
-        int footerY = height - 28;
-        int footerWidth = Math.min(width - 20, 3 * 100 + 2 * gap);
+        int footerWidth = Math.min(width - 2 * margin, 3 * 100 + 2 * gap);
         int footerButton = (footerWidth - 2 * gap) / 3;
         int footerLeft = (width - footerWidth) / 2;
         addRenderableWidget(Button.builder(Component.translatable(PREFIX + "openFolder"), button -> openFolder())
@@ -178,10 +181,10 @@ public class GalleryScreen extends Screen {
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
-        graphics.centeredText(font, title, width / 2, 8, 0xFFFFFFFF);
+        graphics.centeredText(font, title, width / 2, 11, 0xFFFFFFFF);
         if (allShots != null) {
             Component count = Component.translatable(PREFIX + "count", visibleShots.size(), allShots.size());
-            graphics.text(font, count, width - 10 - font.width(count), height - 22, 0xFF808080, false);
+            graphics.text(font, count, width - 12 - font.width(count), height - 12 - 15, 0xFF808080, false);
         }
     }
 

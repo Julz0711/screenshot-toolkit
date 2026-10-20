@@ -36,6 +36,7 @@
 	"screenshot-toolkit.viewer.teleport": "Copy /tp",
 	"screenshot-toolkit.viewer.teleportCopied": "Teleport command copied",
 	"screenshot-toolkit.viewer.crop": "Crop",
+	"screenshot-toolkit.viewer.rename": "Rename",
 	"screenshot-toolkit.viewer.cancelCrop": "Cancel Crop",
 	"screenshot-toolkit.viewer.saveCrop": "Save Crop",
 	"screenshot-toolkit.viewer.cropHint": "Drag over the image to choose the area to keep, then press Save Crop",
@@ -61,5 +62,12 @@
 	"screenshot-toolkit.config.saveMetadata": "Save Location",
 	"screenshot-toolkit.config.saveMetadata.tooltip": "Remember the world, coordinates, dimension and time of each screenshot, for the gallery and its Copy /tp button. Stored in screenshots/.meta, never inside the image.",
 	"screenshot-toolkit.config.trashDays": "Keep Deleted",
-	"screenshot-toolkit.config.trashDays.tooltip": "How long deleted screenshots stay in screenshots/.trash before they are removed for good."
+	"screenshot-toolkit.config.trashDays.tooltip": "How long deleted screenshots stay in screenshots/.trash before they are removed for good.",
+
+	"screenshot-toolkit.rename.title": "Rename Screenshot",
+	"screenshot-toolkit.rename.name": "Name",
+	"screenshot-toolkit.rename.hint": "The date and details stay with the screenshot",
+	"screenshot-toolkit.rename.taken": "Another screenshot already has that name",
+	"screenshot-toolkit.rename.empty": "Type a name",
+	"screenshot-toolkit.rename.failed": "Could not rename the file"
 }
