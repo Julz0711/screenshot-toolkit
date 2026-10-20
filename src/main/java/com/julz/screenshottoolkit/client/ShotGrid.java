@@ -1,6 +1,7 @@
 package com.julz.screenshottoolkit.client;
 
 import com.julz.screenshottoolkit.core.Shot;
+import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -32,16 +33,19 @@ public class ShotGrid extends AbstractWidget {
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(ZoneId.systemDefault());
 
     private final ShotTextures textures;
+    private static final int DELETE_SIZE = 11;
     private final Consumer<Shot> onOpen;
+    private final Consumer<Shot> onDelete;
     private List<Shot> shots = List.of();
     private Component emptyMessage = Component.empty();
     private int selected = -1;
     private double scroll;
 
-    public ShotGrid(int x, int y, int width, int height, ShotTextures textures, Consumer<Shot> onOpen) {
+    public ShotGrid(int x, int y, int width, int height, ShotTextures textures, Consumer<Shot> onOpen, Consumer<Shot> onDelete) {
         super(x, y, width, height, Component.translatable("screenshot-toolkit.gallery.title"));
         this.textures = textures;
         this.onOpen = onOpen;
+        this.onDelete = onDelete;
     }
 
     public void setShots(List<Shot> shots, Component emptyMessage) {
@@ -126,7 +130,7 @@ public class ShotGrid extends AbstractWidget {
                 }
                 int x = left() + column * CELL_WIDTH;
                 int y = getY() + PADDING + row * CELL_HEIGHT - (int) scroll;
-                drawCell(graphics, font, shots.get(index), x, y, index == hovered, index == selected && isFocused());
+                drawCell(graphics, font, shots.get(index), x, y, index == hovered, index == selected && isFocused(), mouseX, mouseY);
             }
         }
         graphics.disableScissor();
@@ -137,7 +141,8 @@ public class ShotGrid extends AbstractWidget {
         }
     }
 
-    private void drawCell(GuiGraphicsExtractor graphics, Font font, Shot shot, int x, int y, boolean hovered, boolean selected) {
+    private void drawCell(GuiGraphicsExtractor graphics, Font font, Shot shot, int x, int y, boolean hovered, boolean selected,
+                          int mouseX, int mouseY) {
         graphics.fill(x, y, x + THUMB_WIDTH, y + THUMB_HEIGHT, 0xFF101010);
         ShotTextures.Texture texture = textures.get(shot.file());
         if (texture != null) {
@@ -149,6 +154,12 @@ public class ShotGrid extends AbstractWidget {
         }
         if (shot.favorite()) {
             graphics.text(font, "★", x + THUMB_WIDTH - 10, y + 3, 0xFFFFD700, true);
+        }
+        if (hovered) {
+            // Quick delete in the corner; it goes to the trash and the gallery offers Undo
+            boolean overDelete = inDeleteBox(x, y, mouseX, mouseY);
+            graphics.fill(x + 2, y + 2, x + 2 + DELETE_SIZE, y + 2 + DELETE_SIZE, overDelete ? 0xE0C03030 : 0xB0000000);
+            graphics.centeredText(font, Component.literal("✕"), x + 2 + DELETE_SIZE / 2 + 1, y + 4, 0xFFFFFFFF);
         }
         // A name the player gave wins over the date, which the viewer still shows
         String label = shot.customName() != null ? shot.customName() : DATE.format(Instant.ofEpochMilli(shot.takenAt()));
@@ -166,6 +177,17 @@ public class ShotGrid extends AbstractWidget {
         }
     }
 
+    private static boolean inDeleteBox(int cellX, int cellY, double mouseX, double mouseY) {
+        return mouseX >= cellX + 2 && mouseX < cellX + 2 + DELETE_SIZE && mouseY >= cellY + 2 && mouseY < cellY + 2 + DELETE_SIZE;
+    }
+
+    /** Where cell {@code index} starts on screen, for tests and the delete box. */
+    public int[] cellPosition(int index) {
+        int column = index % columns();
+        int row = index / columns();
+        return new int[]{left() + column * CELL_WIDTH, getY() + PADDING + row * CELL_HEIGHT - (int) scroll};
+    }
+
     /** Draws the texture as large as fits in the box, keeping its shape, centered. */
     static void drawFitted(GuiGraphicsExtractor graphics, ShotTextures.Texture texture, int x, int y, int width, int height) {
         float scale = Math.min(width / (float) texture.width(), height / (float) texture.height());
@@ -180,6 +202,11 @@ public class ShotGrid extends AbstractWidget {
     public void onClick(MouseButtonEvent event, boolean doubleClick) {
         int index = indexAt(event.x(), event.y());
         if (index >= 0) {
+            int[] cell = cellPosition(index);
+            if (inDeleteBox(cell[0], cell[1], event.x(), event.y())) {
+                onDelete.accept(shots.get(index));
+                return;
+            }
             selected = index;
             onOpen.accept(shots.get(index));
         }
@@ -209,6 +236,10 @@ public class ShotGrid extends AbstractWidget {
         if (move != 0) {
             selected = selected < 0 ? 0 : Mth.clamp(selected + move, 0, shots.size() - 1);
             scrollToSelected();
+            return true;
+        }
+        if (event.key() == InputConstants.KEY_DELETE && selectedShot() != null) {
+            onDelete.accept(selectedShot());
             return true;
         }
         if (event.isConfirmation() && selectedShot() != null) {

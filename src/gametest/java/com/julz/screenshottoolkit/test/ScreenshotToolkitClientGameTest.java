@@ -85,6 +85,7 @@ public class ScreenshotToolkitClientGameTest implements FabricClientGameTest {
         context.waitFor(client -> Files.exists(Thumbnails.file(library, red)));
         context.waitTicks(10);
         context.takeScreenshot("screenshot-toolkit-gallery");
+        testQuickDelete(context, library);
 
         // The viewer opens on the starred screenshot
         context.runOnClient(client -> {
@@ -108,6 +109,59 @@ public class ScreenshotToolkitClientGameTest implements FabricClientGameTest {
         } catch (IOException e) {
             throw new AssertionError(e);
         }
+    }
+
+    /** Deletes from the grid with the Delete key and with the corner button, undoing each. */
+    private void testQuickDelete(ClientGameTestContext context, ScreenshotLibrary library) {
+        Path green = library.directory().resolve("2026-01-02_10.00.00.png");
+        Path blue = library.directory().resolve("2026-01-03_10.00.00.png");
+        int scale = context.computeOnClient(client -> client.getWindow().getGuiScale());
+
+        // Delete key on the selected thumbnail
+        context.runOnClient(client -> {
+            GalleryScreen gallery = (GalleryScreen) client.gui.screen();
+            gallery.visibleShots().stream().filter(shot -> shot.file().equals(green)).findFirst().ifPresent(gallery.grid()::select);
+            gallery.setFocused(gallery.grid());
+        });
+        context.getInput().pressKey(InputConstants.KEY_DELETE);
+        context.waitTick();
+        assertTrue(!Files.exists(green), "Delete key moves the selected screenshot to the trash");
+        boolean listed = context.computeOnClient(client -> ((GalleryScreen) client.gui.screen()).visibleShots().stream()
+                .anyMatch(shot -> shot.file().equals(green)));
+        assertTrue(!listed, "deleted screenshot leaves the grid");
+        clickGalleryUndo(context, scale);
+        context.waitFor(client -> Files.exists(green) && ((GalleryScreen) client.gui.screen()).isLoaded());
+
+        // The corner button on a hovered thumbnail
+        int[] corner = context.computeOnClient(client -> {
+            GalleryScreen gallery = (GalleryScreen) client.gui.screen();
+            int index = gallery.visibleShots().stream().map(Shot::file).toList().indexOf(blue);
+            int[] cell = gallery.grid().cellPosition(index);
+            return new int[]{cell[0] + 7, cell[1] + 7};
+        });
+        context.getInput().setCursorPos(corner[0] * scale, corner[1] * scale);
+        context.waitTicks(2);
+        context.takeScreenshot("screenshot-toolkit-gallery-delete-hover");
+        context.getInput().pressMouse(InputConstants.MOUSE_BUTTON_LEFT);
+        context.waitTick();
+        assertTrue(!Files.exists(blue), "the corner button moves the screenshot to the trash");
+        boolean stillGallery = context.computeOnClient(client -> client.gui.screen() instanceof GalleryScreen);
+        assertTrue(stillGallery, "deleting does not open the viewer");
+        clickGalleryUndo(context, scale);
+        context.waitFor(client -> Files.exists(blue) && ((GalleryScreen) client.gui.screen()).isLoaded());
+        context.waitFor(client -> Files.exists(Thumbnails.file(library, blue)));
+    }
+
+    private static void clickGalleryUndo(ClientGameTestContext context, int scale) {
+        int[] center = context.computeOnClient(client -> {
+            Button b = ((GalleryScreen) client.gui.screen()).undoButton();
+            assertTrue(b.visible, "Undo is offered after a delete");
+            return new int[]{b.getX() + b.getWidth() / 2, b.getY() + b.getHeight() / 2};
+        });
+        context.getInput().setCursorPos(center[0] * scale, center[1] * scale);
+        context.waitTicks(2);
+        context.getInput().pressMouse(InputConstants.MOUSE_BUTTON_LEFT);
+        context.waitTicks(2);
     }
 
     /** Crops, renames and crops again the way a player does, with the mouse and the keyboard. */

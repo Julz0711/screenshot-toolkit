@@ -28,6 +28,8 @@
 	"screenshot-toolkit.gallery.empty": "No screenshots yet. Press F2 to take one.",
 	"screenshot-toolkit.gallery.noMatch": "No screenshots match these filters.",
 	"screenshot-toolkit.gallery.count": "%s of %s",
+	"screenshot-toolkit.gallery.undo": "Undo Delete",
+	"screenshot-toolkit.gallery.undoMany": "Undo (%s)",
 
 	"screenshot-toolkit.viewer.title": "Screenshot",
 	"screenshot-toolkit.viewer.copy": "Copy",

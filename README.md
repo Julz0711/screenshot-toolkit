@@ -12,6 +12,8 @@ without leaving the game.
   kept in the settings).
 - **Gallery** (F9): a grid of thumbnails, newest first. Search by file or world name, show only starred
   screenshots, and filter by world or server and by date. Arrow keys and Enter work too.
+  Delete a screenshot straight from the grid with the ✕ on a hovered thumbnail or the Delete key;
+  it goes to the trash and Undo Delete brings it back.
 - **Viewer**: click a thumbnail to see it full size with its world, dimension, coordinates and time.
   Copy it again, star it, rename it, open it in your image viewer, crop it, or delete it. Left and right arrows go to the
   previous and next screenshot.

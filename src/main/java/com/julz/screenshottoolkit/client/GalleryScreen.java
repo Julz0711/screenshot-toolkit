@@ -12,6 +12,7 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -33,6 +34,12 @@ public class GalleryScreen extends Screen {
     private boolean keepTextures;
 
     private ShotGrid grid;
+    private Button undoButton;
+    /** Screenshots deleted from the grid, newest last: where each went in the trash and its old name. */
+    private final java.util.Deque<Deleted> deleted = new java.util.ArrayDeque<>();
+
+    private record Deleted(Path trashed, String name, long lastModified) {
+    }
     private EditBox search;
 
     public GalleryScreen(Screen parent) {
@@ -96,7 +103,7 @@ public class GalleryScreen extends Screen {
             // Released when another screen took over without saying it would come back
             thumbnails = new ShotTextures(image -> Thumbnails.load(library, image));
         }
-        grid = addRenderableWidget(new ShotGrid(margin, gridTop, width - 2 * margin, footerY - 10 - gridTop, thumbnails, this::open));
+        grid = addRenderableWidget(new ShotGrid(margin, gridTop, width - 2 * margin, footerY - 10 - gridTop, thumbnails, this::open, this::quickDelete));
 
         int footerWidth = Math.min(width - 2 * margin, 3 * 100 + 2 * gap);
         int footerButton = (footerWidth - 2 * gap) / 3;
@@ -111,6 +118,11 @@ public class GalleryScreen extends Screen {
                 .bounds(footerLeft + footerButton + gap, footerY, footerButton, 20).build());
         addRenderableWidget(Button.builder(Component.translatable("gui.done"), button -> onClose())
                 .bounds(footerLeft + 2 * (footerButton + gap), footerY, footerButton, 20).build());
+
+        // Bottom left, across from the count; only there while something can be brought back
+        undoButton = addRenderableWidget(Button.builder(Component.empty(), button -> undoDelete())
+                .bounds(margin, footerY, Math.max(40, Math.min(90, footerLeft - margin - gap)), 20).build());
+        updateUndoButton();
 
         refreshGrid();
         if (reselect != null && allShots != null) {
@@ -156,6 +168,55 @@ public class GalleryScreen extends Screen {
         visibleShots = allShots.stream().filter(shot -> filter.matches(shot, now)).toList();
         Component empty = Component.translatable(allShots.isEmpty() ? PREFIX + "empty" : PREFIX + "noMatch");
         grid.setShots(visibleShots, empty);
+    }
+
+    /** Moves a screenshot to the trash without asking; Undo brings it back. */
+    private void quickDelete(Shot shot) {
+        try {
+            Path trashed = library.moveToTrash(shot.file());
+            deleted.addLast(new Deleted(trashed, shot.name(), shot.lastModified()));
+        } catch (IOException e) {
+            ScreenshotToolkitClient.LOGGER.warn("Could not move {} to the trash", shot.file(), e);
+            return;
+        }
+        allShots = allShots.stream().filter(other -> !other.file().equals(shot.file())).toList();
+        refreshGrid();
+        updateUndoButton();
+    }
+
+    private void undoDelete() {
+        Deleted last = deleted.pollLast();
+        if (last == null) {
+            return;
+        }
+        try {
+            Path restored = library.restoreFromTrash(last.trashed(), last.name());
+            // The trash reset the file time; put it back so the screenshot keeps its date and place
+            java.nio.file.Files.setLastModifiedTime(restored, java.nio.file.attribute.FileTime.fromMillis(last.lastModified()));
+            reselect = new Shot(restored, 0, 0, null);
+        } catch (IOException e) {
+            ScreenshotToolkitClient.LOGGER.warn("Could not restore {}", last.trashed(), e);
+        }
+        updateUndoButton();
+        reload();
+    }
+
+    private void updateUndoButton() {
+        if (undoButton != null) {
+            undoButton.visible = !deleted.isEmpty();
+            undoButton.setMessage(deleted.size() > 1
+                    ? Component.translatable(PREFIX + "undoMany", deleted.size())
+                    : Component.translatable(PREFIX + "undo"));
+        }
+    }
+
+    /** For tests. */
+    public ShotGrid grid() {
+        return grid;
+    }
+
+    public Button undoButton() {
+        return undoButton;
     }
 
     private void open(Shot shot) {
